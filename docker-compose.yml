@@ -1,0 +1,12 @@
+services:
+  grava_nois_service:
+    build: .
+    container_name: grava_nois_service
+    ports:
+      - "2399:2399"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+    restart:
+      on-failure
