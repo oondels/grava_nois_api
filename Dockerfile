@@ -11,7 +11,7 @@ COPY package*.json ./
 RUN npm install --only=production
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/.env.production ./
+# COPY --from=builder /app/.env.production ./
 
 EXPOSE 2399
 CMD ["node", "dist/index.js"]
