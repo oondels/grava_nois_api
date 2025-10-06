@@ -22,11 +22,9 @@ const baseLogger = createLogger({
   ],
 });
 
-const logger: Logger = {
+export const logger: Logger = {
   info: (service, message) => baseLogger.info({ service, message }),
   error: (service, message) => baseLogger.error({ service, message }),
   warn: (service, message) => baseLogger.warn({ service, message }),
   debug: (service, message) => baseLogger.debug({ service, message }),
 };
-
-export default logger;
