@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import { VideoService } from "../services/video.service";
 import { z } from "zod";
 import { CustomError } from "../types/CustomError";
