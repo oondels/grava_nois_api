@@ -117,31 +117,25 @@ export const VideoService = {
   /**
    * List videos from S3 bucket with pagination
    */
-  listVideos: async (params: { prefix: string; limit: number; offset: number; order: "asc" | "desc" }) => {
-    const { prefix, limit, order } = params;
+  listVideos: async (params: { prefix: string; limit: number; token?: string }) => {
+    const { prefix, limit, token } = params;
 
     try {
       const command = new ListObjectsV2Command({
         Bucket: config.s3_bucket_name,
         Prefix: prefix,
         MaxKeys: limit,
+        ContinuationToken: token,
       });
 
       const response = await s3Client.send(command);
 
       if (!response.Contents) {
-        return { files: [], count: 0, hasMore: false, nextOffset: 0 };
+        return { files: [], count: 0, hasMore: false, nextToken: null };
       }
 
       // Filter out folders (objects ending with /)
       let files = response.Contents.filter((item) => item.Key && !item.Key.endsWith("/") && item.Size && item.Size > 0);
-
-      // Sort by LastModified
-      files.sort((a, b) => {
-        const dateA = a.LastModified?.getTime() || 0;
-        const dateB = b.LastModified?.getTime() || 0;
-        return order === "desc" ? dateB - dateA : dateA - dateB;
-      });
 
       const result = files.map((file) => ({
         name: file.Key?.split("/").pop() || "",
@@ -152,13 +146,13 @@ export const VideoService = {
       }));
 
       const hasMore = response.IsTruncated || false;
-      const nextOffset = params.offset + files.length;
+      const nextToken = response.NextContinuationToken || null;
 
       return {
         files: result,
         count: result.length,
         hasMore,
-        nextOffset,
+        nextToken,
       };
     } catch (error) {
       console.error("Error listing videos from S3:", error);

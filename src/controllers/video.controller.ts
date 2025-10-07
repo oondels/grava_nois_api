@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { VideoService } from "../services/video.service";
-import { z } from "zod";
+import { string, z } from "zod";
 import { CustomError } from "../types/CustomError";
 
 export class VideoController {
@@ -79,37 +79,51 @@ export class VideoController {
 
   static async listVideos(req: Request, res: Response, next: NextFunction) {
     try {
-      // Parse and validate query params
-      const prefixRaw = typeof req.query.prefix === "string" ? req.query.prefix : "";
+      const queryParams = z.object({
+        prefix: z.string()
+          .transform(s => s.replace(/\/{2,}/g, '/'))
+          .refine(s => !s.includes('..'), {
+            message: "O prefixo não pode conter '..'"
+          })
+          .transform(s => s.startsWith('/') ? s.slice(1) : s)
+          .transform(s => s.endsWith('/') ? s.slice(0, -1) : s),
 
-      // Sanitize prefix
-      let prefix = "";
-      try {
-        const decoded = decodeURIComponent(prefixRaw || "");
-        if (decoded.includes("..")) {
-          res.status(400).json({ error: "Invalid prefix" });
-          return;
-        }
-        prefix = decoded.replace(/\/{2,}/g, "/").replace(/^\/+|\/+$/g, "");
-      } catch {
-        res.status(400).json({ error: "Invalid prefix" });
+        limit: z.coerce.number()
+          .int()
+          .min(1)
+          .max(100)
+          .default(100),
+
+        order: z.enum(['asc', 'desc'])
+          .optional(),
+
+        token: z.string()
+          .optional(),
+
+        includeSignedUrl: z.boolean()
+          .optional(),
+
+        ttl: z.number()
+          .int()
+          .min(60)
+          .max(86400)
+          .optional(),
+      })
+
+      const parsed = queryParams.safeParse(req.query)
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Parametros de query inválidos",
+          details: parsed.error.flatten()
+        })
         return;
       }
-
-      const limit = Math.min(
-        100,
-        Math.max(1, Number.isFinite(+req.query.limit!) ? parseInt(req.query.limit as string, 10) : 100)
-      );
-
-      const offset = Math.max(0, Number.isFinite(+req.query.offset!) ? parseInt(req.query.offset as string, 10) : 0);
-
-      const order: "asc" | "desc" = req.query.order === "asc" ? "asc" : "desc";
+      const { prefix, limit, token, includeSignedUrl, ttl} = parsed.data;
 
       const result = await VideoService.listVideos({
         prefix,
         limit,
-        offset,
-        order,
+        token,
       });
 
       // Short cache for list metadata (not for signed URLs)
@@ -117,10 +131,10 @@ export class VideoController {
       res.json({
         bucket: result.files[0]?.bucket || "",
         prefix,
-        count: result.count,
         files: result.files,
+        count: result.count,
         hasMore: result.hasMore,
-        nextOffset: result.nextOffset,
+        nextToken: result.nextToken || null,
       });
     } catch (error: any) {
       if (error instanceof CustomError) {
