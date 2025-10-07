@@ -111,9 +111,51 @@ Endpoints are grouped by router; all responses are JSON unless noted.
 ### Video Ingestion & Library
 - `POST /api/videos/metadados/client/:clientId/venue/:venueId` – Registers clip metadata and returns an S3 signed upload URL.
 - `POST /api/videos/:videoId/uploaded` – Verifies the uploaded object and updates status (`uploaded` or `uploaded_temp`).
-- `GET /api/videos/list?prefix=&limit=&offset=&order=` – Lists objects within the S3 bucket.
+- `GET /api/videos/list?prefix=&limit=&token=&includeSignedUrl=&ttl=` – Lista vídeos a partir do banco (fonte de verdade), ordenando por data decrescente. Usa paginação por cursor opaco (`token`). Opcionalmente inclui URLs assinadas para cada item.
 - `GET /api/videos/sign?path=&kind=&ttl=` – Issues a presigned URL for preview/download of a stored clip.
 - `GET /videos-clips?venueId=` – Returns all clips for a venue with short-lived signed URLs.
+
+#### GET /api/videos/list
+
+Lista vídeos a partir da tabela do banco (fonte de verdade), filtrando por `prefix` (início do caminho S3) e ordenando por data decrescente. Paginação por cursor opaco.
+
+Query params:
+- prefix: string (obrigatório)
+  - Caminho inicial do objeto no S3 (ex.: `temp/<clientId>/<venueId>` ou `main/clients/<clientId>/venues/<venueId>/YYYY/MM/DD`).
+  - Sanitizado no backend (remove `//`, trim de `/`, bloqueia `..`).
+- limit: number (opcional, padrão 100, 1..100)
+- token: string (opcional)
+  - Cursor opaco para a próxima página, retornado como `nextToken` na resposta anterior.
+- includeSignedUrl: boolean (opcional, padrão false)
+  - Quando true, adiciona `url` assinada curta para cada item.
+- ttl: number (opcional, padrão 3600, 60..86400)
+  - Validade da URL assinada (segundos) quando `includeSignedUrl=true`.
+
+Resposta:
+```json
+{
+  "bucket": "string",
+  "prefix": "string",
+  "count": 100,
+  "files": [
+    {
+      "name": "clip.mp4",
+      "path": "temp/CLIENT/VENUE/clip.mp4",
+      "bucket": "string",
+      "size": 1048576,
+      "last_modified": "2025-10-07T12:34:56.000Z",
+      "url": "https://..." // presente se includeSignedUrl=true
+    }
+  ],
+  "hasMore": true,
+  "nextToken": "opaque-cursor-or-null"
+}
+```
+
+Observações:
+- Ordenação é sempre decrescente por tempo (ex.: `captured_at DESC, clip_id DESC`), estável e paginada por cursor.
+- Com `includeSignedUrl=true`, o backend define `Cache-Control: private, max-age=0`. Caso contrário, `private, max-age=15`.
+- Para listas extensas, use o `nextToken` até `hasMore=false`.
 
 ### Client & Venue Management
 - `POST /api/clients/` – Creates a client record (requires `legalName`, `email`, and either `cnpj` or `responsibleCpf`).
