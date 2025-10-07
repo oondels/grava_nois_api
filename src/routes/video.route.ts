@@ -69,8 +69,12 @@ videoRouter.post("/api/videos/:videoId/uploaded", VideoController.finalizeVideoU
  *     Path prefix within bucket. Ex.: "temp/client-id/venue-id"
  *     Sanitized (removes //, trim /, blocks "..")
  * - limit: number (default: 100, range: 1..100)
- * - offset: number (default: 0, >= 0)
- * - order: "asc" | "desc" (default: "desc")
+ * - token: string (optional)
+ *     Continuation token for S3 pagination. Use value from previous response `nextToken`.
+ * - includeSignedUrl: boolean (default: false)
+ *     When true, includes a short-lived signed URL for each file item.
+ * - ttl: number (default: 3600, range: 60..86400)
+ *     Time-to-live in seconds for the signed URLs when includeSignedUrl=true
  *
  * @returns {
  *   bucket: string,
@@ -81,10 +85,11 @@ videoRouter.post("/api/videos/:videoId/uploaded", VideoController.finalizeVideoU
  *     path: string,
  *     bucket: string,
  *     size: number | null,
- *     last_modified: string | null
+ *     last_modified: string | null,
+ *     url?: string | null // only when includeSignedUrl=true
  *   }>,
  *   hasMore: boolean,
- *   nextOffset: number
+ *   nextToken: string | null
  * }
  */
 videoRouter.get("/api/videos/list", VideoController.listVideos);

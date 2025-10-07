@@ -117,8 +117,8 @@ export const VideoService = {
   /**
    * List videos from S3 bucket with pagination
    */
-  listVideos: async (params: { prefix: string; limit: number; token?: string }) => {
-    const { prefix, limit, token } = params;
+  listVideos: async (params: { prefix: string; limit: number; token?: string; includeSignedUrl?: boolean; ttl?: number }) => {
+    const { prefix, limit, token, includeSignedUrl, ttl } = params;
 
     try {
       const command = new ListObjectsV2Command({
@@ -137,13 +137,31 @@ export const VideoService = {
       // Filter out folders (objects ending with /)
       let files = response.Contents.filter((item) => item.Key && !item.Key.endsWith("/") && item.Size && item.Size > 0);
 
-      const result = files.map((file) => ({
+      let result = files.map((file) => ({
         name: file.Key?.split("/").pop() || "",
         path: file.Key || "",
         bucket: config.s3_bucket_name,
         size: file.Size || null,
         last_modified: file.LastModified?.toISOString() || null,
       }));
+
+      if (includeSignedUrl) {
+        const signed = await Promise.all(
+          result.map(async (f) => {
+            try {
+              const command = new GetObjectCommand({
+                Bucket: f.bucket,
+                Key: f.path,
+              });
+              const url = await getSignedUrl(s3Client, command, { expiresIn: ttl ?? 3600 });
+              return { ...f, url };
+            } catch {
+              return { ...f, url: null as string | null };
+            }
+          })
+        );
+        result = signed;
+      }
 
       const hasMore = response.IsTruncated || false;
       const nextToken = response.NextContinuationToken || null;

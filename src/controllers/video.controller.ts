@@ -101,13 +101,13 @@ export class VideoController {
           .optional(),
 
         includeSignedUrl: z.boolean()
-          .optional(),
+          .default(false),
 
         ttl: z.number()
           .int()
           .min(60)
           .max(86400)
-          .optional(),
+          .default(3600),
       })
 
       const parsed = queryParams.safeParse(req.query)
@@ -118,19 +118,19 @@ export class VideoController {
         })
         return;
       }
-      const { prefix, limit, token, includeSignedUrl, ttl} = parsed.data;
+      const { prefix, limit, token, includeSignedUrl, ttl } = parsed.data;
 
       const result = await VideoService.listVideos({
         prefix,
         limit,
         token,
+        includeSignedUrl,
+        ttl,
       });
 
       // Short cache for list metadata (not for signed URLs)
-      res.setHeader("Cache-Control", "private, max-age=15");
+      res.setHeader("Cache-Control", includeSignedUrl ? "private, max-age=0" : "private, max-age=15");
       res.json({
-        bucket: result.files[0]?.bucket || "",
-        prefix,
         files: result.files,
         count: result.count,
         hasMore: result.hasMore,
