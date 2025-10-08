@@ -111,18 +111,21 @@ Endpoints are grouped by router; all responses are JSON unless noted.
 ### Video Ingestion & Library
 - `POST /api/videos/metadados/client/:clientId/venue/:venueId` – Registra metadados do clipe e retorna URL assinada de upload (S3 PUT). O caminho final (`storagePath`) é definido conforme o contrato (`monthly_subscription` vs `per_video`).
 - `POST /api/videos/:videoId/uploaded` – Verifica o objeto enviado via S3 (`HeadObject`), confere tamanho/ETag opcional e atualiza o status (`uploaded` ou `uploaded_temp`).
-- `GET /api/videos/list?prefix=&limit=&token=&includeSignedUrl=&ttl=&clientId=&venueId=` – Lista vídeos a partir do banco (fonte de verdade), ordenando por `capturedAt DESC`. Realiza `HeadObject` por item para metadados S3, marca `missing=true` quando não encontrado e opcionalmente inclui URL assinada.
+- `GET /api/videos/list?venueId=&limit=&token=&includeSignedUrl=&ttl=` – Lista vídeos a partir do banco (fonte de verdade), ordenando por `capturedAt DESC`. O backend deriva o prefixo do S3 a partir da instalação e do contrato; realiza `HeadObject` por item para metadados, marca `missing=true` quando não encontrado e opcionalmente inclui URL assinada.
 - `GET /api/videos/sign?path=&kind=&ttl=` – Gera URL assinada (preview/download) para um objeto específico.
 - `GET /videos-clips?venueId=` – Retorna clipes de uma `venue` com URLs assinadas de curta duração.
 
 #### GET /api/videos/list
 
-Lista vídeos consultando primeiro o banco (fonte de verdade) e, para cada item, obtém metadados diretamente do S3 via `HeadObject`. Se o objeto não existir no S3, o item é retornado com `missing=true`. Opcionalmente, uma URL assinada é gerada para cada item quando solicitado.
+Lista vídeos consultando primeiro o banco (fonte de verdade). O servidor deriva automaticamente o prefixo de S3 a partir da instalação (`VenueInstallation`) e do método de contrato:
+
+- `monthly_subscription` → `main/clients/{clientId}/venues/{venueId}/`
+- `per_video` → `temp/{clientId}/{venueId}/`
+
+Para cada item, obtém metadados diretamente do S3 via `HeadObject`. Se o objeto não existir no S3, o item é retornado com `missing=true`. Opcionalmente, uma URL assinada é gerada para cada item quando solicitado.
 
 Query params:
-- prefix: string (obrigatório)
-  - Caminho inicial do objeto no S3 (ex.: `temp/<clientId>/<venueId>` ou `main/clients/<clientId>/venues/<venueId>/<MM>/<DD>`).
-  - Sanitização no backend: remoção de `//`, trim de `/` em bordas e bloqueio de `..`.
+- venueId: string (obrigatório)
 - limit: number (opcional, padrão 100, intervalo 1..100)
 - token: string (opcional)
   - Posição/offset para a próxima página, retornado como `nextToken` na página anterior.
@@ -130,11 +133,6 @@ Query params:
   - Quando `true`, retorna `url` assinada para cada item não ausente no S3.
 - ttl: number (opcional, padrão 3600, intervalo 60..3600)
   - Validade, em segundos, da URL assinada.
-- clientId: string (opcional)
-- venueId: string (opcional)
-
-Autorização:
-- Se o middleware popular `req.user.clientId`, o valor deve coincidir com `clientId` informado na query; caso contrário, a API responde `403`.
 
 Resposta:
 ```json
@@ -160,7 +158,7 @@ Resposta:
 
 Observações:
 - Ordenação é `capturedAt DESC`.
-- Paginação usa offset baseado no `token` (número). `nextToken` é `null` quando não há mais itens.
+- Paginação usa offset baseado no `token` (string numérica). `nextToken` é `null` quando não há mais itens.
 - `Cache-Control`: quando `includeSignedUrl=false`, `private, max-age=15`; quando `true`, `private, max-age=0`.
 
 ### Client & Venue Management
@@ -193,7 +191,7 @@ Entities live in the `grn_*` schemas:
 The initial migration (`src/migrations/1755169373372-InitialMigration.ts`) sets up all four tables plus enums and indexes.
 
 ## Background Jobs & Integrations
-- **S3 uploads** – `VideoService.createSignedUrlVideo` gera URLs assinadas de PUT; `VideoService.finalizeUpload` valida objetos via `HeadObjectCommand`. A listagem (`VideoService.listVideos`) usa `HeadObject` por item para metadados e marca itens ausentes com `missing=true`; URLs de preview/download podem ser geradas sob demanda com `includeSignedUrl`.
+- **S3 uploads** – `VideoService.createSignedUrlVideo` gera URLs assinadas de PUT; `VideoService.finalizeUpload` valida objetos via `HeadObjectCommand`. A listagem (`VideoService.listVideos`) deriva o prefixo do S3 a partir da `VenueInstallation` (contrato), usa `HeadObject` por item para metadados e marca itens ausentes com `missing=true`; URLs de preview/download podem ser geradas sob demanda com `includeSignedUrl`.
 - **RabbitMQ** – Prepared helper (`publishClipEvent`) to emit clip events to the `grn.clips` topic exchange. Publishing is currently commented out in `src/index.ts`.
 - **Supabase** – `@supabase/ssr` manages auth cookies with server-side helpers; `supabaseDb` template supports direct profile queries.
 - **Nodemailer** – Sends HTML and plaintext variants for lead, bug report, and feedback workflows.
