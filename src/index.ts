@@ -4,6 +4,7 @@ import { AppDataSource } from "./config/database";
 import cors from "cors";
 // import { publishClipEvent } from "./rabbitmq/publisher";
 import cookieParser from "cookie-parser";
+import { randomUUID } from "crypto";
 
 // Rotas temporárias (Felix3D)
 import pedidosRouter from "./routes/felix3D/pedidos";
@@ -14,6 +15,9 @@ import { userRouter } from "./routes/userPage";
 import { videoRouter } from "./routes/video.route";
 import { authRouter } from "./routes/auth.route";
 import { notificationRouter } from "./routes/notification.route";
+
+import { CustomError } from "./types/CustomError";
+import { logger } from "./utils/logger";
 
 export const ALLOWED_ORIGINS = new Set([
   "https://www.gravanois.com.br",
@@ -31,10 +35,14 @@ AppDataSource.initialize()
 
       app.use(cookieParser());
       app.use(express.json());
-      app.use((req, res, next) => {
+      app.set("trust proxy", 1);
+      // Correlation id for logs and responses
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        const requestId = (req.headers["x-request-id"] as string) || randomUUID();
+        res.setHeader("X-Request-Id", requestId);
+        (res.locals as any).requestId = requestId;
         next();
       });
-      app.set("trust proxy", 1);
       app.use(
         cors({
           origin(origin, cb) {
@@ -48,6 +56,8 @@ AppDataSource.initialize()
           exposedHeaders: ["Set-Cookie"],
         })
       );
+
+      // (Error handler moved to the end of the middleware chain)
 
       // Temporary routes (Felix3D)
       app.use("/temp_felix3d/pedidos", pedidosRouter);
@@ -130,6 +140,37 @@ AppDataSource.initialize()
           console.error("Error creating venue installation:", error);
           res.status(500).json({ error: "Internal server error." });
         }
+      });
+
+      // 404 handler for unmatched routes
+      app.use((req: Request, res: Response) => {
+        const requestId = (res.locals as any).requestId;
+        res.status(404).json({
+          error: "Rota não encontrada",
+          requestId,
+        });
+      });
+
+      // Global error handler
+      app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+        const isCustom = error instanceof CustomError;
+        const statusCode = isCustom ? (error as CustomError).statusCode : (Number(error?.status) || 500);
+        const safeMessage = isCustom ? error.message : (statusCode === 404 ? "Recurso não encontrado" : "Erro interno no servidor.");
+        const details = isCustom ? (error as CustomError).details : undefined;
+        const requestId = (res.locals as any).requestId;
+
+        logger.error("http", `id=${requestId} method=${req.method} url=${req.originalUrl} status=${statusCode} msg=${error?.message || safeMessage}`);
+
+        // debug logs in development
+        if (process.env.NODE_ENV !== "production" && error?.stack) {
+          console.error(error.stack);
+        }
+
+        res.status(statusCode).json({
+          error: safeMessage,
+          requestId,
+          ...(process.env.NODE_ENV !== "production" && details ? { details } : {}),
+        });
       });
 
       const port = process.env.PORT || 3000;
