@@ -1,69 +1,48 @@
 import express, { Request, Response, NextFunction } from "express";
 // import multer from "multer";
 import { AppDataSource } from "./config/database";
-import { z } from "zod";
 import cors from "cors";
 // import { publishClipEvent } from "./rabbitmq/publisher";
-import nodeMailer from "nodemailer";
-import { config } from "./config/dotenv";
 import cookieParser from "cookie-parser";
+import { randomUUID } from "crypto";
+
+// Rotas temporárias (Felix3D)
 import pedidosRouter from "./routes/felix3D/pedidos";
 import produtosRouter from "./routes/felix3D/produtos";
 import { financeiroRouter } from "./routes/felix3D/financeiro";
 
 import { userRouter } from "./routes/userPage";
 import { videoRouter } from "./routes/video.route";
+import { authRouter } from "./routes/auth.route";
+import { notificationRouter } from "./routes/notification.route";
 
-import { createServerClient, parseCookieHeader, serializeCookieHeader } from "@supabase/ssr";
-import { serialize as serializeCookie, parse as parseCookie } from "cookie";
+import { CustomError } from "./types/CustomError";
+import { logger } from "./utils/logger";
 
-type ContactFormPayload = {
-  estabelecimento: string;
-  cnpjCpf: string;
-  cep: string;
-  endereco: string;
-  estado: string;
-  cidade: string;
-  nome: string;
-  telefone: string;
-  email: string;
-  segmento: string;
-  qtdCameras: number | string;
-  obs: string;
-};
+export const ALLOWED_ORIGINS = new Set([
+  "https://www.gravanois.com.br",
+  "https://gravanois.com.br",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://felix-3d.vercel.app",
+  "https://pondaiba-bar.vercel.app",
+]);
 
 AppDataSource.initialize()
   .then(() => {
     (async () => {
       const app = express();
 
-      const transporter = nodeMailer.createTransport({
-        host: config.mail_host,
-        port: 465,
-        secure: true,
-        auth: {
-          user: config.mail_user,
-          pass: config.mail_pass,
-        },
-      });
-
       app.use(cookieParser());
-
-      app.use((req, res, next) => {
+      app.use(express.json());
+      app.set("trust proxy", 1);
+      // Correlation id for logs and responses
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        const requestId = (req.headers["x-request-id"] as string) || randomUUID();
+        res.setHeader("X-Request-Id", requestId);
+        (res.locals as any).requestId = requestId;
         next();
       });
-
-      const ALLOWED_ORIGINS = new Set([
-        "https://www.gravanois.com.br",
-        "https://gravanois.com.br",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://felix-3d.vercel.app",
-        "https://pondaiba-bar.vercel.app",
-      ]);
-
-      app.set("trust proxy", 1);
-
       app.use(
         cors({
           origin(origin, cb) {
@@ -78,7 +57,7 @@ AppDataSource.initialize()
         })
       );
 
-      app.use(express.json());
+      // (Error handler moved to the end of the middleware chain)
 
       // Temporary routes (Felix3D)
       app.use("/temp_felix3d/pedidos", pedidosRouter);
@@ -88,540 +67,8 @@ AppDataSource.initialize()
       // App routes
       app.use("/users", userRouter);
       app.use(videoRouter);
-
-      // Initialize Supabase client with service role key (secure, only on server)
-
-      // Acumula cookies que o @supabase/ssr deseja setar e envia antes de finalizar a resposta
-      function flushSupabaseCookies(res: Response) {
-        const pending = (res.locals._sb_cookies as { name: string; value: string; options: any }[]) || [];
-        if (!pending.length) return;
-        pending.forEach(({ name, value, options }) => {
-          res.append("Set-Cookie", serializeCookie(name, value, options));
-        });
-        res.locals._sb_cookies = [];
-      }
-
-      function makeSupabase(req: Request, res: Response) {
-        return createServerClient(config.supabaseUrl!, config.supabasePublishableKey!, {
-          cookies: {
-            getAll() {
-              const parsed = req.headers.cookie ? parseCookie(req.headers.cookie) : {};
-              const arr = Object.entries(parsed).map(([name, value]) => ({ name, value: String(value ?? "") }));
-
-              if (!arr.length) {
-                console.error("No cookies found in request");
-              }
-
-              return arr.length ? arr : null;
-            },
-            setAll(cookies) {
-              const sameSiteOpt = (config.cookie_same_site?.toLowerCase?.() as any) || "lax";
-              const normalized = cookies.map(({ name, value, options }) => ({
-                name,
-                value,
-                options: {
-                  path: "/",
-                  httpOnly: true,
-                  secure: config.env === "production",
-                  sameSite: sameSiteOpt,
-                  ...options,
-                } as any,
-              }));
-              res.locals._sb_cookies = ((res.locals._sb_cookies as any[]) || []).concat(normalized);
-            },
-          },
-        });
-      }
-
-      // email login
-      app.post("/sign-in", async (req, res) => {
-        const { email, password } = req.body ?? {};
-        if (!email || !password) return res.status(400).json({ error: "missing_credentials" });
-
-        const supabase = makeSupabase(req, res);
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) return res.status(401).json({ error: error.message });
-
-        // Envia cookies antes de finalizar
-        flushSupabaseCookies(res);
-        return res.status(204).end();
-      });
-
-      app.post("/sign-up", async (req, res) => {
-        const { email, password } = req.body ?? {};
-        if (!email || !password) return res.status(400).json({ error: "missing_credentials" });
-
-        const supabase = makeSupabase(req, res);
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) return res.status(400).json({ error: error.message });
-
-        // Se “Email confirmations” estiver ON, o usuário só loga após confirmar por e-mail
-        return res.status(200).json({ status: "check_email" });
-      });
-
-      app.post("/sign-out", async (req, res) => {
-        const supabase = makeSupabase(req, res);
-        await supabase.auth.signOut(); // limpa os cookies
-        flushSupabaseCookies(res);
-        return res.status(204).end();
-      });
-
-      // TODO: Fazer busca de dados do usuario na tabela
-      app.get("/auth/me", async (req, res) => {
-        const supabase = makeSupabase(req, res);
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser();
-        if (error || !user) return res.status(401).json({ error: "unauthorized" });
-
-        const { data: profile } = await supabase.from("grn_auth.profiles").select("*").eq("id", user.id).single();
-
-        return res.json({
-          user: { id: user.id, email: user.email, app_metadata: user.app_metadata },
-          profile,
-        });
-      });
-
-      // google login
-      app.get("/auth/login/google", async (req: Request, res: Response, next: NextFunction) => {
-        const nextUrl = typeof req.query.next === "string" ? req.query.next : "/";
-        const supabase = makeSupabase(req, res);
-
-        // Usa BACKEND_PUBLIC_URL, com fallback dinâmico a partir do host atual
-        const dynamicBase = `${req.protocol}://${req.get("host")}`;
-        const base = config.backend_public_url || dynamicBase;
-        const url_callback = `${base}/auth/callback`;
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: url_callback, // backend callback
-            queryParams: { access_type: "offline", prompt: "consent" },
-          },
-        });
-        if (error) return res.status(500).json({ error: error.message });
-
-        // Guarde o pós-login em cookie curto para evitar open redirect por query
-        const sameSiteOpt = (config.cookie_same_site?.toLowerCase?.() as any) || "lax";
-        res.cookie("post_auth_next", nextUrl, {
-          path: "/",
-          httpOnly: true,
-          secure: config.env === "production",
-          sameSite: sameSiteOpt,
-          maxAge: 5 * 60 * 1000,
-        });
-
-        // Envia cookies do Supabase antes do redirect
-        flushSupabaseCookies(res);
-
-        return res.redirect(302, data.url); // leva o usuário ao Google
-      });
-
-      function buildFinalRedirect(nextRaw: string | undefined | null) {
-        // fallback
-        let next = typeof nextRaw === "string" ? nextRaw : "/";
-
-        try {
-          // caso absoluto (http/https)
-          if (/^https?:\/\//i.test(next)) {
-            const url = new URL(next);
-            if (ALLOWED_ORIGINS.has(`${url.protocol}//${url.host}`)) {
-              // absoluto permitido
-              return url.toString();
-            }
-            // origem não permitida → cai para fallback
-            next = "/";
-          }
-        } catch {
-          next = "/";
-        }
-
-        // caso relativo → prefixa com FRONTEND_ORIGIN
-        if (!next.startsWith("/")) next = "/";
-        const base = Array.from(ALLOWED_ORIGINS)[0] || "http://localhost:5173";
-        return `${config.env === "production" ? base : "http://localhost:5173"}${next}`;
-      }
-
-      app.get("/auth/callback", async (req: Request, res: Response) => {
-        try {
-          const { error, error_description } = req.query as any;
-          if (error) {
-            return res.redirect(303, `/login?e=${encodeURIComponent(error_description || error)}`);
-          }
-
-          const code = String(req.query.code || "");
-          if (!code) return res.redirect(303, "/login?e=missing_code");
-
-          const supabase = makeSupabase(req, res);
-
-          try {
-            await supabase.auth.exchangeCodeForSession(code);
-          } catch (error: any) {
-            return res.redirect(303, `/login?e=exchange_failed`);
-          }
-
-          const nextCookie = (req.cookies?.post_auth_next as string) || "/";
-          res.clearCookie("post_auth_next", { path: "/" });
-
-          const finalUrl = buildFinalRedirect(nextCookie);
-
-          // Garante envio de cookies de sessão antes do redirect
-          flushSupabaseCookies(res);
-
-          return res.redirect(303, finalUrl);
-        } catch (error) {
-          console.error("Callback error: ", error);
-        }
-      });
-
-      // Send email function (contato/prospecção)
-      app.post("/send-email", async (req: Request, res: Response) => {
-        const {
-          estabelecimento = "",
-          cnpjCpf = "",
-          cep = "",
-          endereco = "",
-          estado = "",
-          cidade = "",
-          nome = "",
-          telefone = "",
-          email = "",
-          segmento = "",
-          qtdCameras = 1,
-          obs = "",
-        } = (req.body || {}) as Partial<ContactFormPayload>;
-
-        // ===== Validações mínimas =====
-        if (!nome.trim()) {
-          return res.status(400).send("Por favor, preencha o seu nome.");
-        }
-        if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          return res.status(400).send("Informe um e-mail válido.");
-        }
-
-        const cameras = Number.isFinite(Number(qtdCameras)) ? Number(qtdCameras) : 1;
-
-        // ===== Assunto dinâmico =====
-        const subjectParts = ["Novo Cliente Grava Nóis", `<${email}>`];
-        if (estabelecimento) subjectParts.push(`— ${estabelecimento}`);
-        const loc = [cidade, estado].filter(Boolean).join(" / ");
-        if (loc) subjectParts.push(`(${loc})`);
-        const subject = subjectParts.join(" ");
-
-        // ===== HTML do e-mail =====
-        const safe = (v?: string | number) => String(v ?? "").trim() || "—";
-        const html = `
-        <div style="font-family: Arial, sans-serif; color:#333; line-height:1.6; max-width:640px; margin:0 auto; background:#f9f9f9; padding:20px; border-radius:12px;">
-          <div style="text-align:center; margin-bottom:20px;">
-            <h1 style="color:#0d9757; font-size:22px; margin:0;">Nova Solicitação de Contato</h1>
-            <p style="color:#777; margin:6px 0 0;">Grava Nóis — Formulário de Prospecção</p>
-          </div>
-
-          <div style="background:#fff; padding:18px; border-radius:10px; border:1px solid #eee;">
-            <h2 style="color:#0056b3; font-size:18px; margin:0 0 12px;">Dados do Estabelecimento</h2>
-            <table cellspacing="0" cellpadding="8" style="width:100%; border-collapse:collapse;">
-              <tbody>
-                <tr><td style="width:40%; font-weight:bold; border-bottom:1px solid #f0f0f0;">Estabelecimento</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  estabelecimento
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">CNPJ/CPF</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  cnpjCpf
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Segmento</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  segmento
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Qtd. Câmeras</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  cameras
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Endereço</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  endereco
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Cidade/UF</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  loc
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">CEP</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  cep
-                )}</td></tr>
-              </tbody>
-            </table>
-
-            <h2 style="color:#0056b3; font-size:18px; margin:20px 0 12px;">Contato</h2>
-            <table cellspacing="0" cellpadding="8" style="width:100%; border-collapse:collapse;">
-              <tbody>
-                <tr><td style="width:40%; font-weight:bold; border-bottom:1px solid #f0f0f0;">Nome</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  nome
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Telefone</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  telefone
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">E-mail</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  email
-                )}</td></tr>
-              </tbody>
-            </table>
-
-            <h2 style="color:#0d9757; font-size:18px; margin:20px 0 8px;">Observações</h2>
-            <div style="font-size:15px; color:#555; background:#f7f7f7; padding:12px; border-radius:8px; border:1px solid #eee;">
-              ${safe(obs)}
-            </div>
-          </div>
-
-          <div style="text-align:center; margin-top:22px; color:#888; font-size:13px;">
-            <p>Este e-mail foi gerado automaticamente a partir do site.</p>
-          </div>
-        </div>
-        `;
-
-        try {
-          await transporter.sendMail({
-            to: "hendriusfelix.dev@gmail.com",
-            subject,
-            html,
-            text: `
-              Novo Cliente Grava Nóis
-              Estabelecimento: ${safe(estabelecimento)}
-              CNPJ/CPF: ${safe(cnpjCpf)}
-              Segmento: ${safe(segmento)}
-              Qtd. Câmeras: ${safe(cameras)}
-              Endereço: ${safe(endereco)}
-              Cidade/UF: ${safe(loc)}
-              CEP: ${safe(cep)}
-
-              Contato:
-              - Nome: ${safe(nome)}
-              - Telefone: ${safe(telefone)}
-              - Email: ${safe(email)}
-
-              Observações:
-              ${safe(obs)}
-              `.trim(),
-          });
-
-          console.log("Email sent");
-          res.status(200).send("Email enviado. Entraremos em contato em breve.");
-          return;
-        } catch (error) {
-          console.error("Erro ao enviar e-mail:", error);
-          res
-            .status(502)
-            .send("Erro de comunicação ao enviar e-mail. Tente contato por WhatsApp -> +55 (75) 98246-6403");
-          return;
-        }
-      });
-
-      // Report errors (bug reports)
-      app.post("/send-report", async (req: Request, res: Response) => {
-        const {
-          name = "",
-          email = "",
-          page = "",
-          title = "",
-          description = "",
-          steps = "",
-          severity = "Média",
-          userAgent = "",
-          url = "",
-        } = (req.body || {}) as {
-          name?: string;
-          email?: string;
-          page?: string;
-          title?: string;
-          description?: string;
-          steps?: string;
-          severity?: "Baixa" | "Média" | "Alta" | string;
-          userAgent?: string;
-          url?: string;
-        };
-
-        const safe = (v?: string) => String(v ?? "").trim() || "—";
-
-        if (!description.trim()) {
-          return res.status(400).send("Descrição é obrigatória.");
-        }
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          return res.status(400).send("Informe um e-mail válido.");
-        }
-
-        const subject = ["Bug Report — Grava Nóis", title || page || "", severity ? `[${severity}]` : ""]
-          .filter(Boolean)
-          .join(" ");
-
-        const html = `
-        <div style="font-family: Arial, sans-serif; color:#333; line-height:1.6; max-width:720px; margin:0 auto; background:#f9f9f9; padding:20px; border-radius:12px;">
-          <div style="text-align:center; margin-bottom:20px;">
-            <h1 style="color:#C62828; font-size:22px; margin:0;">Relatório de Erro</h1>
-            <p style="color:#777; margin:6px 0 0;">Grava Nóis — Canal interno</p>
-          </div>
-
-          <div style="background:#fff; padding:18px; border-radius:10px; border:1px solid #eee;">
-            <h2 style="color:#0056b3; font-size:18px; margin:0 0 12px;">Resumo</h2>
-            <table cellspacing="0" cellpadding="8" style="width:100%; border-collapse:collapse;">
-              <tbody>
-                <tr><td style="width:35%; font-weight:bold; border-bottom:1px solid #f0f0f0;">Título</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  title
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Severidade</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  String(severity)
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Página</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  page
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">URL</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  url
-                )}</td></tr>
-              </tbody>
-            </table>
-
-            <h2 style="color:#0d9757; font-size:18px; margin:20px 0 8px;">Descrição</h2>
-            <div style="font-size:15px; color:#555; background:#f7f7f7; padding:12px; border-radius:8px; border:1px solid #eee; white-space:pre-wrap;">
-              ${safe(description)}
-            </div>
-
-            ${
-              steps?.trim()
-                ? `<h3 style="color:#333; font-size:16px; margin:16px 0 8px;">Passos para reproduzir</h3>
-                 <div style=\"font-size:15px; color:#555; background:#f7f7f7; padding:12px; border-radius:8px; border:1px solid #eee; white-space:pre-wrap;\">${safe(
-                   steps
-                 )}</div>`
-                : ""
-            }
-
-            <h2 style="color:#0056b3; font-size:18px; margin:20px 0 12px;">Contato</h2>
-            <table cellspacing="0" cellpadding="8" style="width:100%; border-collapse:collapse;">
-              <tbody>
-                <tr><td style="width:35%; font-weight:bold; border-bottom:1px solid #f0f0f0;">Nome</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  name
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">E-mail</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  email
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">User-Agent</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  userAgent
-                )}</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div style="text-align:center; margin-top:22px; color:#888; font-size:13px;">
-            <p>Este e-mail foi gerado automaticamente a partir do Reportar Erro.</p>
-          </div>
-        </div>`;
-
-        try {
-          await transporter.sendMail({
-            to: "hendriusfelix.dev@gmail.com",
-            subject,
-            html,
-            text: `
-              Bug Report — Grava Nóis ${severity ? `[${severity}]` : ""}
-              Título: ${safe(title)}
-              Página: ${safe(page)}
-              URL: ${safe(url)}
-
-              Descrição:
-              ${safe(description)}
-
-              Passos para reproduzir:
-              ${safe(steps)}
-
-              Contato:
-              - Nome: ${safe(name)}
-              - Email: ${safe(email)}
-              - User-Agent: ${safe(userAgent)}
-            `.trim(),
-          });
-
-          return res.status(200).send("Relatório enviado. Obrigado por ajudar!");
-        } catch (error) {
-          console.error("Erro ao enviar e-mail de relatório:", error);
-          return res.status(502).send("Falha ao enviar relatório. Tente novamente mais tarde.");
-        }
-      });
-
-      // General feedback (não técnico)
-      app.post("/send-feedback", async (req: Request, res: Response) => {
-        const {
-          name = "",
-          email = "",
-          message = "",
-          page = "",
-          url = "",
-        } = (req.body || {}) as {
-          name?: string;
-          email?: string;
-          message?: string;
-          page?: string;
-          url?: string;
-        };
-
-        const safe = (v?: string) => String(v ?? "").trim() || "—";
-        if (!message.trim()) return res.status(400).send("Mensagem é obrigatória.");
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-          return res.status(400).send("Informe um e-mail válido.");
-
-        const subject = ["Feedback — Grava Nóis", page || "", email ? `<${email}>` : ""].filter(Boolean).join(" ");
-
-        const html = `
-        <div style="font-family: Arial, sans-serif; color:#333; line-height:1.6; max-width:720px; margin:0 auto; background:#f9f9f9; padding:20px; border-radius:12px;">
-          <div style="text-align:center; margin-bottom:20px;">
-            <h1 style="color:#0d9757; font-size:22px; margin:0;">Novo Feedback</h1>
-            <p style="color:#777; margin:6px 0 0;">Grava Nóis — Site/App</p>
-          </div>
-
-          <div style="background:#fff; padding:18px; border-radius:10px; border:1px solid #eee;">
-            <h2 style="color:#0056b3; font-size:18px; margin:0 0 12px;">Mensagem</h2>
-            <div style="font-size:15px; color:#555; background:#f7f7f7; padding:12px; border-radius:8px; border:1px solid #eee; white-space:pre-wrap;">
-              ${safe(message)}
-            </div>
-
-            <h2 style="color:#0056b3; font-size:18px; margin:20px 0 12px;">Detalhes</h2>
-            <table cellspacing="0" cellpadding="8" style="width:100%; border-collapse:collapse;">
-              <tbody>
-                <tr><td style="width:35%; font-weight:bold; border-bottom:1px solid #f0f0f0;">Nome</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  name
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">E-mail</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  email
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">Página</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  page
-                )}</td></tr>
-                <tr><td style="font-weight:bold; border-bottom:1px solid #f0f0f0;">URL</td><td style="border-bottom:1px solid #f0f0f0;">${safe(
-                  url
-                )}</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div style="text-align:center; margin-top:22px; color:#888; font-size:13px;">
-            <p>Este e-mail foi gerado automaticamente a partir do site.</p>
-          </div>
-        </div>`;
-
-        try {
-          await transporter.sendMail({
-            to: "hendriusfelix.dev@gmail.com",
-            subject,
-            html,
-            text: `
-              Feedback — Grava Nóis
-              Página: ${safe(page)}
-              URL: ${safe(url)}
-
-              Mensagem:
-              ${safe(message)}
-
-              Contato:
-              - Nome: ${safe(name)}
-              - Email: ${safe(email)}
-            `.trim(),
-          });
-          return res.status(200).send("Feedback enviado. Obrigado!");
-        } catch (error) {
-          console.error("Erro ao enviar e-mail de feedback:", error);
-          return res.status(502).send("Falha ao enviar feedback. Tente novamente mais tarde.");
-        }
-      });
+      app.use("/auth", authRouter);
+      app.use("/notifications", notificationRouter);
 
       // Health check
       app.get("/", (req: Request, res: Response) => {
@@ -693,6 +140,37 @@ AppDataSource.initialize()
           console.error("Error creating venue installation:", error);
           res.status(500).json({ error: "Internal server error." });
         }
+      });
+
+      // 404 handler for unmatched routes
+      app.use((req: Request, res: Response) => {
+        const requestId = (res.locals as any).requestId;
+        res.status(404).json({
+          error: "Rota não encontrada",
+          requestId,
+        });
+      });
+
+      // Global error handler
+      app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+        const isCustom = error instanceof CustomError;
+        const statusCode = isCustom ? (error as CustomError).statusCode : (Number(error?.status) || 500);
+        const safeMessage = isCustom ? error.message : (statusCode === 404 ? "Recurso não encontrado" : "Erro interno no servidor.");
+        const details = isCustom ? (error as CustomError).details : undefined;
+        const requestId = (res.locals as any).requestId;
+
+        logger.error("http", `id=${requestId} method=${req.method} url=${req.originalUrl} status=${statusCode} msg=${error?.message || safeMessage}`);
+
+        // debug logs in development
+        if (process.env.NODE_ENV !== "production" && error?.stack) {
+          console.error(error.stack);
+        }
+
+        res.status(statusCode).json({
+          error: safeMessage,
+          requestId,
+          ...(process.env.NODE_ENV !== "production" && details ? { details } : {}),
+        });
       });
 
       const port = process.env.PORT || 3000;

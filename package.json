@@ -41,13 +41,16 @@
     "crypto": "^1.0.1",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
     "firebase": "^12.1.0",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.5",
+    "p-limit": "^7.1.1",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
     "typeorm": "^0.3.25",
     "vidstack": "^1.12.13",
+    "winston": "^3.18.3",
     "zod": "^4.0.17"
   }
 }

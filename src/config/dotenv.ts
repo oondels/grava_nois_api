@@ -66,6 +66,7 @@ export const config = {
   mail_pass: process.env.EMAIL_PASS || '',
   mail_host: process.env.EMAIL_HOST || 'smtp.gmail.com',
   rabbitmqUrl: process.env.RABBITMQ_URL || '',
+  dev_email: process.env.DEV_EMAIL || 'hendriusfelix.dev@gmail.com',
 
   backend_public_url: process.env.BACKEND_PUBLIC_URL || '',
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
