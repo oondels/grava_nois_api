@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { videoService } from "../services/video.service";
 import { string, z } from "zod";
 import { CustomError } from "../types/CustomError";
+import { logger } from "../utils/logger";
 
 export class VideoController {
   static async createVideoMetadata(req: Request, res: Response, next: NextFunction) {
@@ -104,7 +105,7 @@ export class VideoController {
           .default('false')
           .transform(s => s === 'true'),
 
-        ttl: z.number()
+        ttl: z.coerce.number()
           .int()
           .min(60)
           .max(3600)
@@ -127,12 +128,23 @@ export class VideoController {
       }
       const { prefix, limit, token, includeSignedUrl, ttl, clientId, venueId } = parsed.data;
 
+      // Checagem simples de autorização: se o middleware preencher req.user.clientId, deve coincidir com o clientId solicitado
+      // const reqUser: any = (req as any).user;
+      // if (reqUser?.clientId && clientId && reqUser.clientId !== clientId) {
+      //   res.status(403).json({ error: "Acesso negado para o clientId informado" });
+      //   return;
+      // }
+
+      logger.info("video.controller", `ListVideos prefix=${prefix} limit=${limit} token=${token ?? 'null'} includeSignedUrl=${includeSignedUrl} clientId=${clientId ?? 'null'} venueId=${venueId ?? 'null'}`);
+
       const result = await videoService.listVideos({
         prefix,
         limit,
         token,
         includeSignedUrl,
         ttl,
+        clientId,
+        venueId,
       });
 
       // Short cache for list metadata (not for signed URLs)
