@@ -109,53 +109,59 @@ Endpoints are grouped by router; all responses are JSON unless noted.
 - `GET /auth/callback` – Handles Supabase OAuth callback.
 
 ### Video Ingestion & Library
-- `POST /api/videos/metadados/client/:clientId/venue/:venueId` – Registers clip metadata and returns an S3 signed upload URL.
-- `POST /api/videos/:videoId/uploaded` – Verifies the uploaded object and updates status (`uploaded` or `uploaded_temp`).
-- `GET /api/videos/list?prefix=&limit=&token=&includeSignedUrl=&ttl=` – Lista vídeos a partir do banco (fonte de verdade), ordenando por data decrescente. Usa paginação por cursor opaco (`token`). Opcionalmente inclui URLs assinadas para cada item.
-- `GET /api/videos/sign?path=&kind=&ttl=` – Issues a presigned URL for preview/download of a stored clip.
-- `GET /videos-clips?venueId=` – Returns all clips for a venue with short-lived signed URLs.
+- `POST /api/videos/metadados/client/:clientId/venue/:venueId` – Registra metadados do clipe e retorna URL assinada de upload (S3 PUT). O caminho final (`storagePath`) é definido conforme o contrato (`monthly_subscription` vs `per_video`).
+- `POST /api/videos/:videoId/uploaded` – Verifica o objeto enviado via S3 (`HeadObject`), confere tamanho/ETag opcional e atualiza o status (`uploaded` ou `uploaded_temp`).
+- `GET /api/videos/list?prefix=&limit=&token=&includeSignedUrl=&ttl=&clientId=&venueId=` – Lista vídeos a partir do banco (fonte de verdade), ordenando por `capturedAt DESC`. Realiza `HeadObject` por item para metadados S3, marca `missing=true` quando não encontrado e opcionalmente inclui URL assinada.
+- `GET /api/videos/sign?path=&kind=&ttl=` – Gera URL assinada (preview/download) para um objeto específico.
+- `GET /videos-clips?venueId=` – Retorna clipes de uma `venue` com URLs assinadas de curta duração.
 
 #### GET /api/videos/list
 
-Lista vídeos a partir da tabela do banco (fonte de verdade), filtrando por `prefix` (início do caminho S3) e ordenando por data decrescente. Paginação por cursor opaco.
+Lista vídeos consultando primeiro o banco (fonte de verdade) e, para cada item, obtém metadados diretamente do S3 via `HeadObject`. Se o objeto não existir no S3, o item é retornado com `missing=true`. Opcionalmente, uma URL assinada é gerada para cada item quando solicitado.
 
 Query params:
 - prefix: string (obrigatório)
-  - Caminho inicial do objeto no S3 (ex.: `temp/<clientId>/<venueId>` ou `main/clients/<clientId>/venues/<venueId>/YYYY/MM/DD`).
-  - Sanitizado no backend (remove `//`, trim de `/`, bloqueia `..`).
-- limit: number (opcional, padrão 100, 1..100)
+  - Caminho inicial do objeto no S3 (ex.: `temp/<clientId>/<venueId>` ou `main/clients/<clientId>/venues/<venueId>/<MM>/<DD>`).
+  - Sanitização no backend: remoção de `//`, trim de `/` em bordas e bloqueio de `..`.
+- limit: number (opcional, padrão 100, intervalo 1..100)
 - token: string (opcional)
-  - Cursor opaco para a próxima página, retornado como `nextToken` na resposta anterior.
+  - Posição/offset para a próxima página, retornado como `nextToken` na página anterior.
 - includeSignedUrl: boolean (opcional, padrão false)
-  - Quando true, adiciona `url` assinada curta para cada item.
-- ttl: number (opcional, padrão 3600, 60..86400)
-  - Validade da URL assinada (segundos) quando `includeSignedUrl=true`.
+  - Quando `true`, retorna `url` assinada para cada item não ausente no S3.
+- ttl: number (opcional, padrão 3600, intervalo 60..3600)
+  - Validade, em segundos, da URL assinada.
+- clientId: string (opcional)
+- venueId: string (opcional)
+
+Autorização:
+- Se o middleware popular `req.user.clientId`, o valor deve coincidir com `clientId` informado na query; caso contrário, a API responde `403`.
 
 Resposta:
 ```json
 {
-  "bucket": "string",
-  "prefix": "string",
-  "count": 100,
-  "files": [
+  "items": [
     {
-      "name": "clip.mp4",
-      "path": "temp/CLIENT/VENUE/clip.mp4",
-      "bucket": "string",
+      "clip_id": "uuid",
+      "path": "temp/<clientId>/<venueId>/<clip>.mp4",
+      "bucket": "<bucket>",
       "size": 1048576,
       "last_modified": "2025-10-07T12:34:56.000Z",
-      "url": "https://..." // presente se includeSignedUrl=true
+      "url": "https://...",
+      "missing": false,
+      "captured_at": "2025-10-07T12:32:10.000Z",
+      "contract_type": "monthly_subscription"
     }
   ],
+  "count": 1,
   "hasMore": true,
-  "nextToken": "opaque-cursor-or-null"
+  "nextToken": "5"
 }
 ```
 
 Observações:
-- Ordenação é sempre decrescente por tempo (ex.: `captured_at DESC, clip_id DESC`), estável e paginada por cursor.
-- Com `includeSignedUrl=true`, o backend define `Cache-Control: private, max-age=0`. Caso contrário, `private, max-age=15`.
-- Para listas extensas, use o `nextToken` até `hasMore=false`.
+- Ordenação é `capturedAt DESC`.
+- Paginação usa offset baseado no `token` (número). `nextToken` é `null` quando não há mais itens.
+- `Cache-Control`: quando `includeSignedUrl=false`, `private, max-age=15`; quando `true`, `private, max-age=0`.
 
 ### Client & Venue Management
 - `POST /api/clients/` – Creates a client record (requires `legalName`, `email`, and either `cnpj` or `responsibleCpf`).
@@ -187,7 +193,7 @@ Entities live in the `grn_*` schemas:
 The initial migration (`src/migrations/1755169373372-InitialMigration.ts`) sets up all four tables plus enums and indexes.
 
 ## Background Jobs & Integrations
-- **S3 uploads** – `VideoService.createSignedUrlVideo` generates presigned PUT URLs; `VideoService.finalizeUpload` validates objects via `HeadObjectCommand`.
+- **S3 uploads** – `VideoService.createSignedUrlVideo` gera URLs assinadas de PUT; `VideoService.finalizeUpload` valida objetos via `HeadObjectCommand`. A listagem (`VideoService.listVideos`) usa `HeadObject` por item para metadados e marca itens ausentes com `missing=true`; URLs de preview/download podem ser geradas sob demanda com `includeSignedUrl`.
 - **RabbitMQ** – Prepared helper (`publishClipEvent`) to emit clip events to the `grn.clips` topic exchange. Publishing is currently commented out in `src/index.ts`.
 - **Supabase** – `@supabase/ssr` manages auth cookies with server-side helpers; `supabaseDb` template supports direct profile queries.
 - **Nodemailer** – Sends HTML and plaintext variants for lead, bug report, and feedback workflows.
