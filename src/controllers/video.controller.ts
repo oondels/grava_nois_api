@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { VideoService } from "../services/video.service";
+import { videoService } from "../services/video.service";
 import { string, z } from "zod";
 import { CustomError } from "../types/CustomError";
 
@@ -25,7 +25,7 @@ export class VideoController {
       }
       const { captured_at, sha256 } = parsed.data;
 
-      const clipData = await VideoService.createSignedUrlVideo({
+      const clipData = await videoService.createSignedUrlVideo({
         captured_at,
         sha256,
         venue_id: venueId,
@@ -59,7 +59,7 @@ export class VideoController {
 
       const { size_bytes, sha256, etag } = parsed.data;
 
-      const result = await VideoService.finalizeUpload({
+      const result = await videoService.finalizeUpload({
         videoId,
         size_bytes,
         sha256,
@@ -100,14 +100,21 @@ export class VideoController {
         token: z.string()
           .optional(),
 
-        includeSignedUrl: z.boolean()
-          .default(false),
+        includeSignedUrl: z.string()
+          .default('false')
+          .transform(s => s === 'true'),
 
         ttl: z.number()
           .int()
           .min(60)
-          .max(86400)
+          .max(3600)
           .default(3600),
+
+        clientId: z.string()
+          .optional(),
+
+        venueId: z.string()
+          .optional(),
       })
 
       const parsed = queryParams.safeParse(req.query)
@@ -118,9 +125,9 @@ export class VideoController {
         })
         return;
       }
-      const { prefix, limit, token, includeSignedUrl, ttl } = parsed.data;
+      const { prefix, limit, token, includeSignedUrl, ttl, clientId, venueId } = parsed.data;
 
-      const result = await VideoService.listVideos({
+      const result = await videoService.listVideos({
         prefix,
         limit,
         token,
@@ -131,7 +138,7 @@ export class VideoController {
       // Short cache for list metadata (not for signed URLs)
       res.setHeader("Cache-Control", includeSignedUrl ? "private, max-age=0" : "private, max-age=15");
       res.json({
-        files: result.files,
+        items: result.items,
         count: result.count,
         hasMore: result.hasMore,
         nextToken: result.nextToken || null,
@@ -158,7 +165,7 @@ export class VideoController {
         return;
       }
 
-      const result = await VideoService.signUrl({
+      const result = await videoService.signUrl({
         path,
         kind,
         ttl,
@@ -186,7 +193,7 @@ export class VideoController {
         return;
       }
 
-      const result = await VideoService.getClipsByVenue(venueId);
+      const result = await videoService.getClipsByVenue(venueId);
       res.json(result);
     } catch (error: any) {
       if (error instanceof CustomError) {

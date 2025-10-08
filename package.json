@@ -45,6 +45,7 @@
     "firebase": "^12.1.0",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.5",
+    "p-limit": "^7.1.1",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
     "typeorm": "^0.3.25",

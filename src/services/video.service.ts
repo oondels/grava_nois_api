@@ -6,6 +6,10 @@ import { AppDataSource } from "../config/database";
 import { randomUUID } from "crypto";
 import { CustomError } from "../types/CustomError";
 import { VideoStatus } from "../models/Videos";
+import { Like } from "typeorm";
+import { Repository } from "typeorm";
+import { Video } from "../models/Videos";
+import pLimit from "p-limit";
 
 interface signedUrlVideoData {
   captured_at: string;
@@ -14,8 +18,21 @@ interface signedUrlVideoData {
   client_id: string;
 }
 
-export const VideoService = {
-  createSignedUrlVideo: async (data: signedUrlVideoData) => {
+type DbVideo = {
+  clipId: string;
+  storagePath: string;
+  capturedAt: Date | null;
+  sizeBytes?: string | null;
+}
+
+class VideoService {
+  private readonly VideoDataSource: Repository<Video>;
+
+  constructor() {
+    this.VideoDataSource = AppDataSource.getRepository(Video);
+  }
+
+  async createSignedUrlVideo(data: signedUrlVideoData) {
     // Lógica para criar URL assinada de vídeo a partir de metadados do vídeo
     // Validate Client ID
     const videoRepository = AppDataSource.getRepository("Video");
@@ -112,76 +129,121 @@ export const VideoService = {
       console.log(`Rolled back video record for clipId: ${clip.clipId}`);
       throw error;
     }
-  },
+  }
 
   /**
-   * List videos from S3 bucket with pagination
+   * List videos from database -> S3 bucket with pagination
    */
-  listVideos: async (params: { prefix: string; limit: number; token?: string; includeSignedUrl?: boolean; ttl?: number }) => {
-    const { prefix, limit, token, includeSignedUrl, ttl } = params;
+  async listVideos(params: { prefix: string; limit: number; token?: string; includeSignedUrl?: boolean; ttl?: number, clientId?: string; venueId?: string }) {
+    const { prefix, limit, token, includeSignedUrl, ttl, clientId, venueId } = params;
 
     try {
-      const command = new ListObjectsV2Command({
-        Bucket: config.s3_bucket_name,
-        Prefix: prefix,
-        MaxKeys: limit,
-        ContinuationToken: token,
+      const offset = token ? parseInt(token, 10) : 0;
+
+      const videos = await this.VideoDataSource.find({
+        where: {
+          storagePath: Like(`${prefix}%`),
+          clientId: clientId,
+          venueId: venueId,
+        },
+        order: { capturedAt: "DESC" },
+        skip: offset,
+        take: limit,
       });
 
-      const response = await s3Client.send(command);
+      const limiter = pLimit(5);
 
-      if (!response.Contents) {
-        return { files: [], count: 0, hasMore: false, nextToken: null };
-      }
+      const s3Videos = await Promise.all(
+        videos.map((video) => 
+          limiter(async () => {
+            if (!video.storagePath) {
+              return {
+                clip_id: video.clipId,
+                path: null as string | null,
+                bucket: config.s3_bucket_name,
+                size: null as number | null,
+                last_modified: null as string | null,
+                url: null as string | null,
+                missing: true,
+                captured_at: video.capturedAt?.toISOString() || null,
+                contract_type: video.contract,
+              };
+            }
 
-      // Filter out folders (objects ending with /)
-      let files = response.Contents.filter((item) => item.Key && !item.Key.endsWith("/") && item.Size && item.Size > 0);
+            // Consulta metadados e existência no S3
+            let size: number | null = null;
+            let lastModified: string | null = null;
+            let url: string | null = null;
+            let missing = false;
 
-      let result = files.map((file) => ({
-        name: file.Key?.split("/").pop() || "",
-        path: file.Key || "",
-        bucket: config.s3_bucket_name,
-        size: file.Size || null,
-        last_modified: file.LastModified?.toISOString() || null,
-      }));
-
-      if (includeSignedUrl) {
-        const signed = await Promise.all(
-          result.map(async (f) => {
             try {
-              const command = new GetObjectCommand({
-                Bucket: f.bucket,
-                Key: f.path,
-              });
-              const url = await getSignedUrl(s3Client, command, { expiresIn: ttl ?? 3600 });
-              return { ...f, url };
-            } catch {
-              return { ...f, url: null as string | null };
+              const head = await s3Client.send(
+                new HeadObjectCommand({
+                  Bucket: config.s3_bucket_name,
+                  Key: video.storagePath,
+                })
+              )
+
+              size = head.ContentLength || null;
+              lastModified = head.LastModified?.toISOString() || null;
+            }
+            catch (error) {
+              // Em caso do objeto nao existir no S3, marcamos como missing (ausente)
+              missing = true;
+              // TODO: Fazer tratamento de banco ao dados para vídeos que não tiverem no amazon s3
+            }
+
+            if (includeSignedUrl && !missing) {
+              try {
+                const signed = await getSignedUrl(
+                  s3Client,
+                  new GetObjectCommand({
+                    Bucket: config.s3_bucket_name,
+                    Key: video.storagePath,
+                  }),
+                  { expiresIn: ttl ?? 3600 }
+                )
+                url = signed;
+              }
+              catch (error) {
+                url = null;
+              }
+            }
+
+            return {
+              clip_id: video.clipId,
+              path: video.storagePath,
+              bucket: config.s3_bucket_name,
+              size,
+              last_modified: lastModified,
+              url,
+              missing,
+              captured_at: video.capturedAt?.toISOString() || null,
+              contract_type: video.contract,
             }
           })
-        );
-        result = signed;
-      }
+        )
+      )
 
-      const hasMore = response.IsTruncated || false;
-      const nextToken = response.NextContinuationToken || null;
+      const hasMore = videos.length === limit;
+      const nextToken = hasMore ? String(offset + videos.length) : null
 
       return {
-        files: result,
-        count: result.length,
+        items: s3Videos,
+        count: s3Videos.length,
         hasMore,
         nextToken,
-      };
+      }
     } catch (error) {
       console.error("Error listing videos from S3:", error);
       throw new CustomError("Failed to list files from S3", 502);
     }
-  },
+  }
 
   /**
    * Create signed URL for S3 object (preview or download)
    */
-  signUrl: async (params: { path: string; kind: "preview" | "download"; ttl: number }) => {
+  async signUrl(params: { path: string; kind: "preview" | "download"; ttl: number }) {
     const { path, kind, ttl } = params;
 
     try {
@@ -198,12 +260,12 @@ export const VideoService = {
       console.error("Error signing URL:", error);
       throw new CustomError("Failed to sign URL", 502);
     }
-  },
+  }
 
   /**
    * Verify uploaded video exists and matches expected size
    */
-  verifyUpload: async (params: { storagePath: string; expectedSize: number; expectedEtag?: string }) => {
+  async verifyUpload(params: { storagePath: string; expectedSize: number; expectedEtag?: string }) {
     const { storagePath, expectedSize, expectedEtag } = params;
 
     try {
@@ -239,12 +301,12 @@ export const VideoService = {
       console.error("Error verifying upload:", error);
       throw new CustomError("Uploaded object not accessible for verification", 422);
     }
-  },
+  }
 
   /**
    * Finalize video upload - verify and update status
    */
-  finalizeUpload: async (params: { videoId: string; size_bytes: number; sha256: string; etag?: string }) => {
+  async finalizeUpload(params: { videoId: string; size_bytes: number; sha256: string; etag?: string }) {
     const { videoId, size_bytes, sha256, etag } = params;
 
     // 1) Fetch video by clipId
@@ -260,7 +322,7 @@ export const VideoService = {
     }
 
     // 2) Verify upload via S3 HEAD
-    await VideoService.verifyUpload({
+    await this.verifyUpload({
       storagePath: video.storagePath,
       expectedSize: size_bytes,
       expectedEtag: etag,
@@ -280,12 +342,12 @@ export const VideoService = {
       storage_path: video.storagePath,
       status: newStatus === VideoStatus.UPLOADED ? "uploaded" : "uploaded_temp",
     };
-  },
+  }
 
   /**
    * Get clips by venue with signed URLs
    */
-  getClipsByVenue: async (venueId: string) => {
+  async getClipsByVenue(venueId: string) {
     const videoRepository = AppDataSource.getRepository("Video");
 
     const clips = await videoRepository.find({
@@ -300,7 +362,7 @@ export const VideoService = {
 
         if (clip.storagePath) {
           try {
-            const { url } = await VideoService.signUrl({
+            const { url } = await this.signUrl({
               path: clip.storagePath,
               kind: "preview",
               ttl: 600, // 10 minutes
@@ -323,5 +385,7 @@ export const VideoService = {
     );
 
     return { items };
-  },
+  }
 };
+
+export const videoService = new VideoService();
