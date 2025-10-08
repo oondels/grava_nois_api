@@ -9,6 +9,7 @@ import { VideoStatus } from "../models/Videos";
 import { Like } from "typeorm";
 import { Repository } from "typeorm";
 import { Video } from "../models/Videos";
+import { VenueInstallation } from "../models/VenueInstallations";
 import pLimit from "p-limit";
 
 interface signedUrlVideoData {
@@ -27,9 +28,11 @@ type DbVideo = {
 
 class VideoService {
   private readonly VideoDataSource: Repository<Video>;
+  private readonly VenueDataSource: Repository<VenueInstallation>
 
   constructor() {
     this.VideoDataSource = AppDataSource.getRepository(Video);
+    this.VenueDataSource = AppDataSource.getRepository(VenueInstallation)
   }
 
   async createSignedUrlVideo(data: signedUrlVideoData) {
@@ -134,16 +137,33 @@ class VideoService {
   /**
    * List videos from database -> S3 bucket with pagination
    */
-  async listVideos(params: { prefix: string; limit: number; token?: string; includeSignedUrl?: boolean; ttl?: number, clientId?: string; venueId?: string }) {
-    const { prefix, limit, token, includeSignedUrl, ttl, clientId, venueId } = params;
+  async listVideos(params: { prefix?: string; limit: number; token?: string; includeSignedUrl?: boolean; ttl?: number; clientId?: string; venueId?: string }) {
+    const { limit, token, includeSignedUrl, ttl, venueId } = params;
 
     try {
       const offset = token ? parseInt(token, 10) : 0;
 
+      // Buscar instalação da venue para determinar clientId e contractMethod
+      const venue = venueId
+        ? await this.VenueDataSource.findOne({
+            where: { id: venueId },
+            select: ["clientId", "contractMethod"],
+          })
+        : null;
+
+      if (!venue) {
+        throw new CustomError("Instalação da quadra não encontrada", 404);
+      }
+
+      const resolvedClientId = venue.clientId;
+      const effectivePrefix = venue.contractMethod === "monthly_subscription"
+        ? `main/clients/${resolvedClientId}/venues/${venueId}/`
+        : `temp/${resolvedClientId}/${venueId}/`;
+
       const videos = await this.VideoDataSource.find({
         where: {
-          storagePath: Like(`${prefix}%`),
-          clientId: clientId,
+          storagePath: Like(`${effectivePrefix}%`),
+          clientId: resolvedClientId,
           venueId: venueId,
         },
         order: { capturedAt: "DESC" },

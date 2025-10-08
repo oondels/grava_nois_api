@@ -81,13 +81,7 @@ export class VideoController {
   static async listVideos(req: Request, res: Response, next: NextFunction) {
     try {
       const queryParams = z.object({
-        prefix: z.string()
-          .transform(s => s.replace(/\/{2,}/g, '/'))
-          .refine(s => !s.includes('..'), {
-            message: "O prefixo não pode conter '..'"
-          })
-          .transform(s => s.startsWith('/') ? s.slice(1) : s)
-          .transform(s => s.endsWith('/') ? s.slice(0, -1) : s),
+        prefix: z.string().optional(),
 
         limit: z.coerce.number()
           .int()
@@ -126,7 +120,7 @@ export class VideoController {
         })
         return;
       }
-      const { prefix, limit, token, includeSignedUrl, ttl, clientId, venueId } = parsed.data;
+      const { limit, token, includeSignedUrl, ttl, venueId } = parsed.data;
 
       // Checagem simples de autorização: se o middleware preencher req.user.clientId, deve coincidir com o clientId solicitado
       // const reqUser: any = (req as any).user;
@@ -135,15 +129,13 @@ export class VideoController {
       //   return;
       // }
 
-      logger.info("video.controller", `ListVideos prefix=${prefix} limit=${limit} token=${token ?? 'null'} includeSignedUrl=${includeSignedUrl} clientId=${clientId ?? 'null'} venueId=${venueId ?? 'null'}`);
+      logger.info("video.controller", `ListVideos venueId=${venueId ?? 'null'} limit=${limit} token=${token ?? 'null'} includeSignedUrl=${includeSignedUrl}`);
 
       const result = await videoService.listVideos({
-        prefix,
         limit,
         token,
         includeSignedUrl,
         ttl,
-        clientId,
         venueId,
       });
 
