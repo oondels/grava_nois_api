@@ -11,15 +11,16 @@ const authLimiter = rateLimit({
 });
 
 export const authRouter = Router()
-
+//* Migração Supabase feita
 authRouter.post("/sign-in",authLimiter, AuthController.signIn)
 
+//* Migração Supabase feita
 authRouter.post("/sign-up", authLimiter, AuthController.signUp)
 
 authRouter.post("/sign-out", AuthController.signOut)
 
 authRouter.get("/me", AuthController.authMe)
 
-authRouter.get("/login/google", AuthController.googleLogin)
+// authRouter.get("/login/google", AuthController.googleLogin)
 
-authRouter.get("/callback", AuthController.googleCallback)
+// authRouter.get("/callback", AuthController.googleCallback)

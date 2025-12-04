@@ -10,9 +10,8 @@ dotenv.config({ path: ENV_FILE });
 const REQUIRED_ENV_VARS: string[] = [
   // URLs e chaves de serviços externos
   'BACKEND_PUBLIC_URL',
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_KEY',
-  'SUPABASE_PUBLISHABLE_KEY',
+  'JWT_SECRET',
+  'JWT_EXPIRES_IN',
   // E-mail (transporter)
   'EMAIL_USER',
   'EMAIL_PASS',
@@ -70,10 +69,8 @@ export const config = {
 
   backend_public_url: process.env.BACKEND_PUBLIC_URL || '',
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
-
-  supabaseUrl: process.env.SUPABASE_URL || '',
-  supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || '',
-  supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || '',
+  jwt_secret: process.env.JWT_SECRET || 'default_secret',
+  jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
 
   aws_access_key_id: process.env.AWS_ACCESS_KEY_ID || '',
   aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY || '',

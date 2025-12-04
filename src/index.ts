@@ -25,7 +25,6 @@ export const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
   "http://localhost:5174",
   "https://felix-3d.vercel.app",
-  "https://pondaiba-bar.vercel.app",
 ]);
 
 AppDataSource.initialize()
