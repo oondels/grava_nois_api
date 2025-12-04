@@ -1,41 +1,14 @@
 import { Request, Response, NextFunction } from "express"
 import { z } from "zod";
-import { AuthService } from "../services/auth.service"
+import { authService } from "../services/auth.service"
 import { config } from "../config/dotenv";
-import { ALLOWED_ORIGINS } from "../index";
 import { CustomError } from "../types/CustomError";
-import { flushSupabaseCookies } from "../config/supabase";
+
 
 const signInSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres")
 });
-
-
-function buildFinalRedirect(nextRaw: string | undefined | null) {
-  // fallback
-  let next = typeof nextRaw === "string" ? nextRaw : "/";
-
-  try {
-    // caso absoluto (http/https)
-    if (/^https?:\/\//i.test(next)) {
-      const url = new URL(next);
-      if (ALLOWED_ORIGINS.has(`${url.protocol}//${url.host}`)) {
-        // absoluto permitido
-        return url.toString();
-      }
-      // origem não permitida → cai para fallback
-      next = "/";
-    }
-  } catch {
-    next = "/";
-  }
-
-  // caso relativo → prefixa com FRONTEND_ORIGIN
-  if (!next.startsWith("/")) next = "/";
-  const base = Array.from(ALLOWED_ORIGINS)[0] || "http://localhost:5173";
-  return `${config.env === "production" ? base : "http://localhost:5173"}${next}`;
-}
 
 export class AuthController {
   static async signIn(req: Request, res: Response, next: NextFunction) {
@@ -49,9 +22,19 @@ export class AuthController {
       }
 
       const { email, password } = validation.data;
-      await AuthService.signIn(email, password, req, res);
+      const user = await authService.signIn(email, password);
 
-      return res.status(204).end();
+      return res.status(200).json({
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          emailVerified: user.emailVerified,
+          role: user.role,
+        },
+        status: 200,
+        message: "Login realizado com sucesso!"
+      })
     } catch (error) {
       next(error);
     }

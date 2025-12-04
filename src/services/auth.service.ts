@@ -1,43 +1,69 @@
 import { makeSupabase, flushSupabaseCookies } from "../config/supabase";
-import { Request, Response } from "express"
 import { CustomError } from "../types/CustomError";
-import { config } from "../config/dotenv"
+import { config } from "../config/dotenv";
+import { User } from "../models/User";
+import { UserOauth } from "../models/UserOauth";
+import { AppDataSource } from "../config/database";
+import { randomUUID } from "crypto";
+import { Repository } from "typeorm";
+import bcrypt from "bcrypt";
 
-export const AuthService = {
-  async signIn(email: string, password: string, req: Request, res: Response): Promise<void> {
-    const supabase = makeSupabase(req, res);
+class AuthService {
+  private readonly UserDataSource: Repository<User>;
+  private readonly UserOauthDataSource: Repository<UserOauth>;
 
+  constructor() {
+    this.UserDataSource = AppDataSource.getRepository(User);
+    this.UserOauthDataSource = AppDataSource.getRepository(UserOauth);
+  }
+
+  async signIn(email: string, password: string): Promise<Omit<User, 'password'>> {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw new CustomError(error.message, 401);
+      const user = await this.UserDataSource.findOne({ where: { email } });
+      if (!user) throw new CustomError("Credenciais Inválidas", 404);
 
-      if (!data.user) {
-        throw new CustomError("Falha na autenticação", 401);
+      if (!user.password) {
+        throw new CustomError("Esta conta deve ser acessada via login social (ex: Google).", 400);
       }
 
-      // Envia cookies antes de finalizar
-      flushSupabaseCookies(res);
+      if (user.isActive === false) {
+        throw new CustomError("Usuário inativo.", 403);
+      }
+
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) throw new CustomError("Credenciais Inválidas", 401);
+
+      // Atualiza last_login_at
+      user.lastLoginAt = new Date();
+      await this.UserDataSource.save(user);
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password: _, ...safeUser } = user as any;
+
+      return safeUser;
     } catch (error) {
       if (error instanceof CustomError) throw error;
 
       throw new CustomError("Erro desconhecido ao autenticar", 500);
     }
+  }
 
-  },
+  async signUp(email: string, password: string): Promise<User> {
+    try {
 
-  async signUp(email: string, password: string, req: Request, res: Response): Promise<void> {
-    const supabase = makeSupabase(req, res);
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    } catch (error) {
+      if (error instanceof CustomError) throw error;
 
-    if (error) throw new CustomError(error.message, 401);
-  },
+      throw new CustomError("Erro desconhecido ao registrar usuário", 500);
+    }
+  }
 
   async signOut(req: Request, res: Response): Promise<void> {
     const supabase = makeSupabase(req, res);
     await supabase.auth.signOut();
 
     flushSupabaseCookies(res);
-  },
+  }
 
   async getUser(req: Request, res: Response) {
     const supabase = makeSupabase(req, res);
@@ -53,7 +79,7 @@ export const AuthService = {
     }
 
     return { user, profile: profile || null };
-  },
+  }
 
   async googleLogin(req: Request, res: Response) {
     const supabase = makeSupabase(req, res);
@@ -73,7 +99,7 @@ export const AuthService = {
     if (error) throw new CustomError(error.message, 401);
 
     return data;
-  },
+  }
 
   async googleCallback(req: Request, res: Response, code: string) {
     const supabase = makeSupabase(req, res);
@@ -85,3 +111,5 @@ export const AuthService = {
     }
   }
 }
+
+export const authService = new AuthService();
