@@ -24,6 +24,11 @@ const REQUIRED_ENV_VARS: string[] = [
   'S3_BUCKET_NAME'
 ];
 
+// Variáveis opcionais com valores padrão
+const OPTIONAL_ENV_VARS: Record<string, string> = {
+  'BCRYPT_SALT_ROUNDS': '12',
+};
+
 // Em produção, exige também DB e RabbitMQ
 if (CURRENT_ENV === 'production') {
   REQUIRED_ENV_VARS.push(
@@ -72,6 +77,7 @@ export const config = {
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
   jwt_secret: process.env.JWT_SECRET || 'default_secret',
   jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
+  bcrypt_salt_rounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
   google_client_id: process.env.GOOGLE_CLIENT_ID || '',
 
   aws_access_key_id: process.env.AWS_ACCESS_KEY_ID || '',
