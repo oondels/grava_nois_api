@@ -15,7 +15,7 @@ export const AppDataSource = new DataSource({
   username: config.database.user,
   password: config.database.password,
   database: config.database.name,
-  synchronize: config.env === 'development', // Keep just in development mode
+  synchronize: false, // NEVER use true - always use migrations
   logging: false,
   entities: [Client, VenueInstallation, Payment, Video, User, UserOauth],
   subscribers: [],

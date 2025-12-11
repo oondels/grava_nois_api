@@ -67,9 +67,8 @@ class AuthService {
         throw new CustomError("Email já cadastrado.", 409);
       }
 
-
-      // TODO: Validar força de senha e colocar salt em variavel de ambiente
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // TODO: Validar força de senha
+      const hashedPassword = await bcrypt.hash(password, config.bcrypt_salt_rounds);
 
       const newUser = this.UserDataSource.create({
         email,

@@ -2,6 +2,8 @@ import { Router } from "express"
 import { AuthController } from "../controllers/auth.controller"
 import rateLimit from "express-rate-limit";
 import { authenticateToken } from "../middlewares/auth.middleware";
+import { validate } from "../middlewares/validate";
+import { signInSchema, signUpSchema } from "../validation/auth.schemas";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
@@ -13,9 +15,9 @@ const authLimiter = rateLimit({
 
 export const authRouter = Router()
 
-authRouter.post("/sign-in", authLimiter, AuthController.signIn)
+authRouter.post("/sign-in", authLimiter, validate(signInSchema), AuthController.signIn)
 
-authRouter.post("/sign-up", authLimiter, AuthController.signUp)
+authRouter.post("/sign-up", authLimiter, validate(signUpSchema), AuthController.signUp)
 
 authRouter.post("/sign-out", AuthController.signOut)
 
