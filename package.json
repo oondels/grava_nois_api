@@ -46,6 +46,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "firebase": "^12.1.0",
+    "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.5",

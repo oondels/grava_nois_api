@@ -139,6 +139,58 @@ export class AuthController {
     }
   }
 
+  static async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { idToken } = req.body;
+
+      if (!idToken) {
+        res.status(400).json({ 
+          error: "missing_token", 
+          message: "Google ID token é obrigatório." 
+        });
+        return;
+      }
+
+      // Authenticate with Google
+      const user = await authService.googleLogin(idToken);
+
+      // Generate JWT token (same pattern as signIn/signUp)
+      const token = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role
+        },
+        config.jwt_secret as jwt.Secret,
+        { expiresIn: config.jwt_expires_in } as jwt.SignOptions
+      );
+
+      // Set cookie (same pattern as signIn/signUp)
+      const isProd = config.env === 'production';
+      res.cookie("grn_access_token", token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        path: '/',
+        maxAge: 1000 * 60 * 60,
+      });
+
+      res.status(200).json({
+        user: {
+          email: user.email,
+          username: user.username,
+          emailVerified: user.emailVerified,
+          role: user.role,
+        },
+        status: 200,
+        message: "Login com Google realizado com sucesso!"
+      });
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // static async googleLogin(req: Request, res: Response, next: NextFunction) {
   //   try {
   //     const nextUrl = typeof req.query.next === "string" ? req.query.next : "/";

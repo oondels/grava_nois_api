@@ -19,6 +19,8 @@ authRouter.post("/sign-up", authLimiter, AuthController.signUp)
 
 authRouter.post("/sign-out", AuthController.signOut)
 
+authRouter.post("/google", authLimiter, AuthController.googleLogin)
+
 authRouter.get("/me", AuthController.authMe)
 
 // authRouter.get("/login/google", AuthController.googleLogin)

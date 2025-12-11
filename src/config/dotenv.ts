@@ -12,6 +12,7 @@ const REQUIRED_ENV_VARS: string[] = [
   'BACKEND_PUBLIC_URL',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
+  'GOOGLE_CLIENT_ID',
   // E-mail (transporter)
   'EMAIL_USER',
   'EMAIL_PASS',
@@ -71,6 +72,7 @@ export const config = {
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
   jwt_secret: process.env.JWT_SECRET || 'default_secret',
   jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
+  google_client_id: process.env.GOOGLE_CLIENT_ID || '',
 
   aws_access_key_id: process.env.AWS_ACCESS_KEY_ID || '',
   aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY || '',

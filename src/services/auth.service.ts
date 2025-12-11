@@ -7,14 +7,17 @@ import { AppDataSource } from "../config/database";
 import { randomUUID } from "crypto";
 import { Repository } from "typeorm";
 import bcrypt from "bcrypt";
+import { OAuth2Client } from "google-auth-library";
 
 class AuthService {
   private readonly UserDataSource: Repository<User>;
   private readonly UserOauthDataSource: Repository<UserOauth>;
+  private readonly googleClient: OAuth2Client;
 
   constructor() {
     this.UserDataSource = AppDataSource.getRepository(User);
     this.UserOauthDataSource = AppDataSource.getRepository(UserOauth);
+    this.googleClient = new OAuth2Client(config.google_client_id);
   }
 
   async signIn(email: string, password: string): Promise<Omit<User, 'password'>> {
@@ -112,6 +115,129 @@ class AuthService {
       if (error instanceof CustomError) throw error;
 
       throw new CustomError("Erro desconhecido ao obter usuário autenticado", 500);
+    }
+  }
+
+  /**
+   * Google OAuth Login
+   * Verifies Google ID token, finds or creates user, and returns user object
+   * @param idToken - Google ID token from the client
+   * @returns User object without password
+   */
+  async googleLogin(idToken: string): Promise<Omit<User, 'password'>> {
+    try {
+      // Step 1: Verify Google token and extract user information
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: config.google_client_id,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload) {
+        throw new CustomError("Token do Google inválido", 401);
+      }
+
+      const { sub: googleId, email, name, email_verified } = payload;
+
+      if (!email || !googleId || !name) {
+        throw new CustomError("Informações insuficientes do Google", 401);
+      }
+
+      // Step 2: Check if user exists via OAuth link (grn_users_oauth)
+      const existingOauth = await this.UserOauthDataSource.findOne({
+        where: {
+          oauthProvider: "google",
+          oauthId: googleId,
+        },
+        relations: ["user"],
+      });
+
+      if (existingOauth) {
+        // Scenario 1: User exists and is linked to Google
+        const user = existingOauth.user;
+
+        // Update last_login_at
+        user.lastLoginAt = new Date();
+        await this.UserDataSource.save(user);
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password: _, ...safeUser } = user as any;
+        return safeUser;
+      }
+
+      // Step 3: Check if user exists by email
+      const existingUser = await this.UserDataSource.findOne({
+        where: { email },
+      });
+
+      if (existingUser) {
+        // Scenario 2: User exists but not linked to Google
+        // Create OAuth link
+        const newOauthLink = this.UserOauthDataSource.create({
+          userId: existingUser.id,
+          oauthProvider: "google",
+          oauthId: googleId,
+          createdAt: new Date(),
+        });
+
+        await this.UserOauthDataSource.save(newOauthLink);
+
+        // Update last_login_at
+        existingUser.lastLoginAt = new Date();
+        await this.UserDataSource.save(existingUser);
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password: _, ...safeUser } = existingUser as any;
+        return safeUser;
+      }
+
+      // Scenario 3: New user - create both User and UserOauth records
+      const queryRunner = AppDataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // Create new user
+        const newUser = this.UserDataSource.create({
+          email,
+          password: null, // OAuth users don't have password
+          name,
+          emailVerified: email_verified || true, // Trust Google's email verification
+          role: "common",
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastLoginAt: new Date(),
+        });
+
+        const savedUser = await queryRunner.manager.save(User, newUser);
+
+        // Create OAuth link
+        const newOauthLink = this.UserOauthDataSource.create({
+          userId: savedUser.id,
+          oauthProvider: "google",
+          oauthId: googleId,
+          createdAt: new Date(),
+        });
+
+        await queryRunner.manager.save(UserOauth, newOauthLink);
+
+        await queryRunner.commitTransaction();
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password: _, ...safeUser } = savedUser as any;
+        return safeUser;
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    } catch (error) {
+      if (error instanceof CustomError) throw error;
+
+      console.error("Google login error:", error);
+      throw new CustomError("Erro ao autenticar com Google", 500);
     }
   }
 
