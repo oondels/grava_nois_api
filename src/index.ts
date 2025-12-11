@@ -5,6 +5,7 @@ import cors from "cors";
 // import { publishClipEvent } from "./rabbitmq/publisher";
 import cookieParser from "cookie-parser";
 import { randomUUID } from "crypto";
+import helmet from "helmet";
 
 // Rotas temporárias (Felix3D)
 import pedidosRouter from "./routes/felix3D/pedidos";
@@ -32,6 +33,7 @@ AppDataSource.initialize()
     (async () => {
       const app = express();
 
+      app.use(helmet());
       app.use(cookieParser());
       app.use(express.json());
       app.set("trust proxy", 1);
@@ -71,7 +73,7 @@ AppDataSource.initialize()
 
       // Health check
       app.get("/", (req: Request, res: Response) => {
-        res.send("Video upload api is running.");
+        res.send("Grava Nois api is running.");
       });
 
       // Realiza criação de novo client
@@ -80,7 +82,8 @@ AppDataSource.initialize()
           const data = req.body;
 
           if (!data || !data.legalName || !data.email || (!data.cnpj && !data.responsibleCpf)) {
-            return res.status(400).json({ error: "Nome/Razão Social, Email e cpf/cnpj são obrigatórios." });
+            res.status(400).json({ error: "Nome/Razão Social, Email e cpf/cnpj são obrigatórios." });
+            return
           }
 
           //! TODO: Fazer verificação da existencia de client
@@ -95,9 +98,11 @@ AppDataSource.initialize()
           await clientRepository.save(newClient);
 
           res.status(201).json(newClient);
+          return
         } catch (error) {
           console.error("Error creating client:", error);
           res.status(500).json({ error: "Internal server error." });
+          return;
         }
       });
 
@@ -117,9 +122,10 @@ AppDataSource.initialize()
             !data.city ||
             !data.postalCode
           ) {
-            return res.status(400).json({
+            res.status(400).json({
               error: "Client ID, Venue Name, Address Line, Country, State, City and Postal Code are required.",
             });
+            return;
           }
 
           const venueInstallationRepository = AppDataSource.getRepository("VenueInstallation");
@@ -135,9 +141,11 @@ AppDataSource.initialize()
           await venueInstallationRepository.save(newVenueInstallation);
 
           res.status(201).json(newVenueInstallation);
+          return
         } catch (error) {
           console.error("Error creating venue installation:", error);
           res.status(500).json({ error: "Internal server error." });
+          return
         }
       });
 
@@ -170,6 +178,7 @@ AppDataSource.initialize()
           requestId,
           ...(process.env.NODE_ENV !== "production" && details ? { details } : {}),
         });
+        return
       });
 
       const port = process.env.PORT || 3000;

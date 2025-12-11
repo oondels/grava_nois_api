@@ -127,6 +127,11 @@ export class AuthController {
   static async authMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = req.user;
+      if (!user) {
+        res.status(401).json({ message: "Usuário não autenticado." });
+        return;
+      }
+
       const foundedUser = await authService.getUser(user.id);
 
       res.json({

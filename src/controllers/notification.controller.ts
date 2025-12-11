@@ -9,21 +9,23 @@ export class NotificationController {
     try {
       const validation = contactFormSchema.safeParse(req.body);
       if (!validation.success) {
-        return res.status(400).json({
+        res.status(400).json({
           error: "validation_failed",
           message: "Dados inválidos",
           details: validation.error.issues
         });
+        return
       }
 
       const payload = validation.data as ContactFormPayload;
       await notificationService.sendContactEmail(payload);
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: "Solicitação enviada com sucesso, entraremos em contato em breve!",
         data: null
       })
+      return
     } catch (error) {
       next(error)
     }
@@ -33,21 +35,23 @@ export class NotificationController {
     try {
       const validation = bugReportSchema.safeParse(req.body);
       if (!validation.success) {
-        return res.status(400).json({
+        res.status(400).json({
           error: "validation_failed",
           message: "Dados inválidos",
           details: validation.error.issues
         });
+        return
       }
 
       const payload = validation.data as BugReportPayload;
       await notificationService.sendReportEmail(payload);
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: "Relatório enviado com sucesso, obrigado pelo feedback!",
         data: null
       })
+      return
     } catch (error) {
       next(error)
     }

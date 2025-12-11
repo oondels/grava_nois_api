@@ -114,7 +114,8 @@ financeiroRouter.post('/', async (req: Request<unknown, unknown, CreateFinanceir
     const body = req.body ?? {}
     if (!body.tipo || !body.item || body.valor == null || isNaN(Number(body.valor))) {
       await client.query('ROLLBACK')
-      return res.status(400).json({ message: 'Campos obrigatórios: tipo, item, valor' })
+      res.status(400).json({ message: 'Campos obrigatórios: tipo, item, valor' })
+      return
     }
 
     const data = body.data ?? null
@@ -158,7 +159,8 @@ financeiroRouter.put('/:id', async (req: Request<{ id: string }, unknown, Update
     )
     if (existing.rows.length === 0) {
       await client.query('ROLLBACK')
-      return res.status(404).json({ message: 'Lançamento não encontrado' })
+      res.status(404).json({ message: 'Lançamento não encontrado' })
+      return
     }
 
     const allowed = [
@@ -184,7 +186,8 @@ financeiroRouter.put('/:id', async (req: Request<{ id: string }, unknown, Update
 
     if (updateFields.length === 0) {
       await client.query('ROLLBACK')
-      return res.status(400).json({ message: 'Nenhum campo válido fornecido para atualização' })
+      res.status(400).json({ message: 'Nenhum campo válido fornecido para atualização' })
+      return
     }
 
     updateValues.push(id)
@@ -218,7 +221,8 @@ financeiroRouter.delete('/:id', async (req: Request<{ id: string }>, res: Respon
     )
     if (existing.rows.length === 0) {
       await client.query('ROLLBACK')
-      return res.status(404).json({ message: 'Lançamento não encontrado' })
+      res.status(404).json({ message: 'Lançamento não encontrado' })
+      return
     }
 
     const result: QueryResult<FinanceiroRow> = await client.query(

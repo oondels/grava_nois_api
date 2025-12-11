@@ -12,7 +12,7 @@ export interface DecodedToken {
 
 const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
   // Tenta obter o token em ordem de prioridade: cookies, header Authorization, body
-  let token = req.cookies.token;
+  let token = req.cookies.grn_access_token;
   
   if (!token) {
     // Tenta obter do header Authorization

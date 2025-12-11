@@ -1,7 +1,9 @@
+import { DecodedToken } from "../middlewares/auth.middleware";
+
 declare global {
   namespace Express {
     interface Request {
-      user?: import("../middlewares/auth").DecodedToken;
+      user?: DecodedToken;
     }
   }
 }
