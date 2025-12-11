@@ -1,31 +1,16 @@
 import { Request, Response, NextFunction } from "express"
-import { z } from "zod";
 import { authService } from "../services/auth.service"
 import { config } from "../config/dotenv";
 import { CustomError } from "../types/CustomError";
 import jwt from 'jsonwebtoken';
-import { env } from "process";
-
-
-const signInSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres")
-});
+import { signInSchema } from "../validation/auth.schemas";
 
 export class AuthController {
   //* Migração Supabase feita
   static async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const validation = signInSchema.safeParse(req.body);
-      if (!validation.success) {
-        res.status(400).json({
-          error: "validation_failed",
-          details: validation.error.issues
-        });
-        return;
-      }
-
-      const { email, password } = validation.data;
+      // Validação feita pelo middleware validate()
+      const { email, password } = req.body;
       const user = await authService.signIn(email, password);
 
       const token = jwt.sign(
