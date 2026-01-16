@@ -15,6 +15,10 @@ export const signUpSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
 });
 
+export const googleSignInSchema = z.object({
+  idToken: z.string().min(1, "Google ID token é obrigatório"),
+});
+
 export const updatePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Senha atual é obrigatória"),
   newPassword: z.string()
@@ -39,6 +43,7 @@ export const resetPasswordSchema = z.object({
 
 export type SignInInput = z.infer<typeof signInSchema>;
 export type SignUpInput = z.infer<typeof signUpSchema>;
+export type GoogleSignInInput = z.infer<typeof googleSignInSchema>;
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
 export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

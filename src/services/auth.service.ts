@@ -1,4 +1,3 @@
-import { makeSupabase, flushSupabaseCookies } from "../config/supabase";
 import { CustomError } from "../types/CustomError";
 import { config } from "../config/dotenv";
 import { User } from "../models/User";
@@ -136,11 +135,18 @@ class AuthService {
         throw new CustomError("Token do Google inválido", 401);
       }
 
-      const { sub: googleId, email, name, email_verified } = payload;
+      const { sub: googleId, email, name, given_name, email_verified } = payload as any;
 
-      if (!email || !googleId || !name) {
+      if (!email || !googleId) {
         throw new CustomError("Informações insuficientes do Google", 401);
       }
+
+      // Evita vincular/registrar com e-mail não verificado.
+      if (email_verified !== true) {
+        throw new CustomError("Email do Google não verificado.", 401);
+      }
+
+      const resolvedName = String(name || given_name || String(email).split("@")[0] || "Usuário");
 
       // Step 2: Check if user exists via OAuth link (grn_users_oauth)
       const existingOauth = await this.UserOauthDataSource.findOne({
@@ -155,6 +161,10 @@ class AuthService {
         // Scenario 1: User exists and is linked to Google
         const user = existingOauth.user;
 
+        if (user.isActive === false) {
+          throw new CustomError("Usuário inativo.", 403);
+        }
+
         // Update last_login_at
         user.lastLoginAt = new Date();
         await this.UserDataSource.save(user);
@@ -167,19 +177,38 @@ class AuthService {
       // Step 3: Check if user exists by email
       const existingUser = await this.UserDataSource.findOne({
         where: { email },
+        relations: ["oauth"],
       });
 
       if (existingUser) {
         // Scenario 2: User exists but not linked to Google
-        // Create OAuth link
-        const newOauthLink = this.UserOauthDataSource.create({
-          userId: existingUser.id,
-          oauthProvider: "google",
-          oauthId: googleId,
-          createdAt: new Date(),
-        });
+        if (existingUser.isActive === false) {
+          throw new CustomError("Usuário inativo.", 403);
+        }
 
-        await this.UserOauthDataSource.save(newOauthLink);
+        // Caso já exista um vínculo OAuth (outro provedor) e a tabela tenha user_id único,
+        // evitamos estourar constraint silenciosamente.
+        if (existingUser.oauth) {
+          if (existingUser.oauth.oauthProvider !== "google") {
+            throw new CustomError(
+              "Esta conta já está vinculada a outro provedor OAuth.",
+              409
+            );
+          }
+
+          existingUser.oauth.oauthId = googleId;
+          await this.UserOauthDataSource.save(existingUser.oauth);
+        } else {
+          // Create OAuth link
+          const newOauthLink = this.UserOauthDataSource.create({
+            userId: existingUser.id,
+            oauthProvider: "google",
+            oauthId: googleId,
+            createdAt: new Date(),
+          });
+
+          await this.UserOauthDataSource.save(newOauthLink);
+        }
 
         // Update last_login_at
         existingUser.lastLoginAt = new Date();
@@ -200,8 +229,8 @@ class AuthService {
         const newUser = this.UserDataSource.create({
           email,
           password: null, // OAuth users don't have password
-          name,
-          emailVerified: email_verified || true, // Trust Google's email verification
+          name: resolvedName,
+          emailVerified: true,
           role: "common",
           isActive: true,
           createdAt: new Date(),

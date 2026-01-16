@@ -8,6 +8,7 @@ const PRIVATE_KEY = config.jwt_secret as jwt.Secret;
 export interface DecodedToken {
   id: string;
   email: string;
+  role?: string;
 }
 
 const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
@@ -40,7 +41,23 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
       return;
     }
 
-    req.user = decoded as DecodedToken;
+    // Compat: o token foi assinado com `userId` em alguns fluxos.
+    // Normaliza para `req.user.id` para evitar inconsistências em handlers.
+    const payload = decoded as jwt.JwtPayload;
+    const normalizedId = String((payload as any).userId ?? (payload as any).id ?? "");
+    const normalizedEmail = String((payload as any).email ?? "");
+    const normalizedRole = (payload as any).role ? String((payload as any).role) : undefined;
+
+    if (!normalizedId || !normalizedEmail) {
+      res.status(401).json({ message: "Token inválido." });
+      return;
+    }
+
+    req.user = {
+      id: normalizedId,
+      email: normalizedEmail,
+      role: normalizedRole,
+    };
     next();
   });
 };
