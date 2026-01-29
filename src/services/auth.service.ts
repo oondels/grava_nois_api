@@ -135,7 +135,7 @@ class AuthService {
         throw new CustomError("Token do Google inválido", 401);
       }
 
-      const { sub: googleId, email, name, given_name, email_verified } = payload as any;
+      const { sub: googleId, email, name, given_name, email_verified, picture } = payload as any;
 
       if (!email || !googleId) {
         throw new CustomError("Informações insuficientes do Google", 401);
@@ -158,11 +158,21 @@ class AuthService {
       });
 
       if (existingOauth) {
+        console.log("Usuario existe em OAUTH");
+        
         // Scenario 1: User exists and is linked to Google
         const user = existingOauth.user;
 
         if (user.isActive === false) {
           throw new CustomError("Usuário inativo.", 403);
+        }
+
+        // Update name and avatar if not set
+        if (user.name !== resolvedName) {
+          user.name = resolvedName;
+        }
+        if (user.avatarUrl === null && picture) {
+          user.avatarUrl = picture;
         }
 
         // Update last_login_at
@@ -181,6 +191,8 @@ class AuthService {
       });
 
       if (existingUser) {
+        console.log("User existe por email");
+        
         // Scenario 2: User exists but not linked to Google
         if (existingUser.isActive === false) {
           throw new CustomError("Usuário inativo.", 403);
@@ -220,6 +232,8 @@ class AuthService {
       }
 
       // Scenario 3: New user - create both User and UserOauth records
+      console.log("Novo usuario");
+      
       const queryRunner = AppDataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
@@ -230,6 +244,7 @@ class AuthService {
           email,
           password: null, // OAuth users don't have password
           name: resolvedName,
+          avatarUrl: picture || null,
           emailVerified: true,
           role: "common",
           isActive: true,

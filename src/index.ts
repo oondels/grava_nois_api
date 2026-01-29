@@ -31,7 +31,7 @@ AppDataSource.initialize()
 
       app.use(helmet());
       app.use(cookieParser());
-      app.use(express.json({ limit: '1mb' }));
+      app.use(express.json({ limit: '5mb' }));
       app.set("trust proxy", 1);
 
       // Correlation id for logs and responses
@@ -41,20 +41,21 @@ AppDataSource.initialize()
         (res.locals as any).requestId = requestId;
         next();
       });
-      
-      app.use(
-        cors({
-          origin(origin, cb) {
-            if (!origin) return cb(null, true);
-            if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
-            return cb(new Error(`CORS: origin não permitido: ${origin}`));
-          },
-          credentials: true,
-          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-          allowedHeaders: "*",
-          exposedHeaders: ["Set-Cookie"],
-        })
-      );
+
+      const corsOptions = {
+        origin(origin: any, cb: any) {
+          if (!origin) return cb(null, true);
+          if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
+          return cb(new Error(`CORS: origin não permitido: ${origin}`));
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["content-type", "authorization", "x-requested-with"],
+        exposedHeaders: ["Set-Cookie"],
+      };
+
+      app.options(/.*/, cors(corsOptions));
+      app.use(cors(corsOptions));
 
       // App routes
       app.use("/users", userRouter);

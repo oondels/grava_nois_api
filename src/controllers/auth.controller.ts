@@ -59,7 +59,6 @@ export class AuthController {
     }
   }
 
-  //* Migração Supabase feita
   static async signUp(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { email, password, name } = req.body ?? {};
@@ -176,6 +175,8 @@ export class AuthController {
         user: {
           email: user.email,
           username: user.username,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
           emailVerified: user.emailVerified,
           role: user.role,
         },
