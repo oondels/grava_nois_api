@@ -45,6 +45,18 @@ export class User {
   @Column({ type: "jsonb", name: "quadras_filiadas", nullable: true })
   quadrasFiliadas?: any;
 
+  @Column({ type: "varchar", length: 20, nullable: true })
+  cep?: string | null;
+
+  @Column({ type: "text", nullable: true })
+  state?: string | null;
+
+  @Column({ type: "text", nullable: true })
+  city?: string | null;
+
+  @Column({ type: "text", nullable: true, default: "BR" })
+  country?: string | null;
+
   @Column({ type: "timestamp", name: "last_login_at", nullable: true })
   lastLoginAt!: Date | null;
 

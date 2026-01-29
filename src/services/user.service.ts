@@ -8,6 +8,10 @@ export type UpdateUserInput = {
   username?: string | null;
   avatarUrl?: string | null;
   quadrasFiliadas?: any;
+  cep?: string | null;
+  state?: string | null;
+  city?: string | null;
+  country?: string | null;
 };
 
 class UserService {
@@ -32,7 +36,11 @@ class UserService {
       patch.name !== undefined ||
       patch.username !== undefined ||
       patch.avatarUrl !== undefined ||
-      patch.quadrasFiliadas !== undefined;
+      patch.quadrasFiliadas !== undefined ||
+      patch.cep !== undefined ||
+      patch.state !== undefined ||
+      patch.city !== undefined ||
+      patch.country !== undefined;
 
     if (!hasAnyChange) {
       return user;
@@ -52,6 +60,22 @@ class UserService {
 
     if (patch.quadrasFiliadas !== undefined && patch.quadrasFiliadas !== user.quadrasFiliadas) {
       user.quadrasFiliadas = patch.quadrasFiliadas;
+    }
+
+    if (patch.cep !== undefined && patch.cep !== user.cep) {
+      user.cep = patch.cep;
+    }
+
+    if (patch.state !== undefined && patch.state !== user.state) {
+      user.state = patch.state;
+    }
+
+    if (patch.city !== undefined && patch.city !== user.city) {
+      user.city = patch.city;
+    }
+
+    if (patch.country !== undefined && patch.country !== user.country) {
+      user.country = patch.country;
     }
 
     return await this.userRepository.save(user);

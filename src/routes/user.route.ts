@@ -9,6 +9,13 @@ export const userRouter = Router();
 // Público (mantém comportamento anterior de leitura), retornando apenas dados não sensíveis.
 userRouter.get("/:id", userController.getById.bind(userController));
 
+userRouter.patch(
+  "/:id/location",
+  authenticateToken,
+  validate(updateUserSchema),
+  userController.updateUserLocation.bind(userController)
+);
+
 // Atualização: exige autenticação e só permite o próprio usuário.
 userRouter.patch(
   "/:id",

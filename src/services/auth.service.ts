@@ -116,6 +116,11 @@ class AuthService {
         role: user.role,
         oauthProvider: user.oauth ? user.oauth.oauthProvider : null,
         avatarUrl: user.avatarUrl ? user.avatarUrl : null,
+        country: user.country ? user.country : null,
+        state: user.state ? user.state : null,
+        city: user.city ? user.city : null,
+        cep: user.cep ? user.cep : null,
+        quadrasFiliadas: user.quadrasFiliadas ? user.quadrasFiliadas : null,
       };
 
     } catch (error) {

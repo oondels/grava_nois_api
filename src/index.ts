@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import { randomUUID } from "crypto";
 import helmet from "helmet";
 
-import { userRouter } from "./routes/userPage";
+import { userRouter } from "./routes/user.route";
 import { videoRouter } from "./routes/video.route";
 import { authRouter } from "./routes/auth.route";
 import { notificationRouter } from "./routes/notification.route";

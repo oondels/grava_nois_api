@@ -18,6 +18,12 @@ function toUserResponse(user: any) {
     updatedAt: user.updatedAt,
     lastLoginAt: user.lastLoginAt,
     quadrasFiliadas: user.quadrasFiliadas,
+    localization: {
+      cep: user.cep ?? null,
+      state: user.state ?? null,
+      city: user.city ?? null,
+      country: user.country ?? null,
+    }
   };
 }
 
@@ -78,6 +84,44 @@ export class UserController {
       res.status(200).json({
         success: true,
         message: "Perfil atualizado com sucesso",
+        user: toUserResponse(updated),
+        data: toUserResponse(updated),
+        requestId: (res.locals as any).requestId,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateUserLocation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        throw new CustomError("User ID é obrigatório", 400);
+      }
+
+      if (!req.user || req.user.id !== id) {
+        throw new CustomError("Acesso negado", 403);
+      }
+
+      const { cep, state, city, country } = req.body;
+
+      console.log('Localizancao sendo att');
+      
+      console.log(req.body);
+      
+
+      const patch: any = {};
+      if (cep !== undefined) patch.cep = cep;
+      if (state !== undefined) patch.state = state;
+      if (city !== undefined) patch.city = city;
+      if (country !== undefined) patch.country = country;
+
+      const updated = await userService.updateById(id, patch);
+
+      res.status(200).json({
+        success: true,
+        message: "Localização do usuário atualizada com sucesso",
         user: toUserResponse(updated),
         data: toUserResponse(updated),
         requestId: (res.locals as any).requestId,
