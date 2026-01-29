@@ -107,7 +107,16 @@ class AuthService {
       // Remover password
       const { password: _, ...safeUser } = user as any;
 
-      return safeUser;
+      return {
+        id: user.id,
+        email: user.email,
+        username: user.username || "",
+        name: user.name || "",
+        emailVerified: user.emailVerified,
+        role: user.role,
+        oauthProvider: user.oauth ? user.oauth.oauthProvider : null,
+        avatarUrl: user.avatarUrl ? user.avatarUrl : null,
+      };
 
     } catch (error) {
       if (error instanceof CustomError) throw error;
