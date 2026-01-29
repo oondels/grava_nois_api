@@ -10,8 +10,6 @@ function toUserResponse(user: any) {
     username: user.username ?? null,
     name: user.name,
     avatarUrl,
-    // compat com formato antigo
-    avatar_url: avatarUrl,
     provider: user.oauthProvider ?? null,
     role: user.role,
     emailVerified: user.emailVerified,
@@ -19,6 +17,7 @@ function toUserResponse(user: any) {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     lastLoginAt: user.lastLoginAt,
+    quadrasFiliadas: user.quadrasFiliadas,
   };
 }
 
@@ -36,7 +35,6 @@ export class UserController {
         success: true,
         message: "Usuário encontrado com sucesso",
         user: toUserResponse(user),
-        data: toUserResponse(user),
         requestId: (res.locals as any).requestId,
       });
     } catch (error) {
@@ -51,17 +49,17 @@ export class UserController {
         throw new CustomError("User ID é obrigatório", 400);
       }
 
-      // segurança básica: só o próprio usuário pode atualizar
       if (!req.user || req.user.id !== id) {
         throw new CustomError("Acesso negado", 403);
       }
-
+      
       const patch = req.body as any;
 
       const hasAnyField =
         patch.name !== undefined ||
         patch.username !== undefined ||
-        patch.avatarUrl !== undefined;
+        patch.avatarUrl !== undefined ||
+        patch.quadrasFiliadas !== undefined;
 
       if (!hasAnyField) {
         const current = await userService.getById(id);

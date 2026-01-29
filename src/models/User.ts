@@ -42,6 +42,9 @@ export class User {
   @UpdateDateColumn({ type: "timestamp", name: "updated_at" })
   updatedAt!: Date;
 
+  @Column({ type: "jsonb", name: "quadras_filiadas", nullable: true })
+  quadrasFiliadas?: any;
+
   @Column({ type: "timestamp", name: "last_login_at", nullable: true })
   lastLoginAt!: Date | null;
 

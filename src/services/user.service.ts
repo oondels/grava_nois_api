@@ -7,6 +7,7 @@ export type UpdateUserInput = {
   name?: string;
   username?: string | null;
   avatarUrl?: string | null;
+  quadrasFiliadas?: any;
 };
 
 class UserService {
@@ -30,7 +31,8 @@ class UserService {
     const hasAnyChange =
       patch.name !== undefined ||
       patch.username !== undefined ||
-      patch.avatarUrl !== undefined;
+      patch.avatarUrl !== undefined ||
+      patch.quadrasFiliadas !== undefined;
 
     if (!hasAnyChange) {
       return user;
@@ -46,6 +48,10 @@ class UserService {
 
     if (patch.avatarUrl !== undefined && patch.avatarUrl !== user.avatarUrl) {
       user.avatarUrl = patch.avatarUrl;
+    }
+
+    if (patch.quadrasFiliadas !== undefined && patch.quadrasFiliadas !== user.quadrasFiliadas) {
+      user.quadrasFiliadas = patch.quadrasFiliadas;
     }
 
     return await this.userRepository.save(user);
