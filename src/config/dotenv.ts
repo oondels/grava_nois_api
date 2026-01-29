@@ -79,6 +79,7 @@ export const config = {
   jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
   bcrypt_salt_rounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
   google_client_id: process.env.GOOGLE_CLIENT_ID || '',
+  cookie_max_age: parseInt(process.env.COOKIE_MAX_AGE || String(1000 * 60 * 60), 10), // 1 hora
 
   aws_access_key_id: process.env.AWS_ACCESS_KEY_ID || '',
   aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY || '',

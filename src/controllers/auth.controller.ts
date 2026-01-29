@@ -5,8 +5,27 @@ import { CustomError } from "../types/CustomError";
 import jwt from 'jsonwebtoken';
 import { signInSchema } from "../validation/auth.schemas";
 
+function setAuthToken(res: Response, token: string) {
+  const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+  if (!decoded || !decoded.exp) {
+    throw new CustomError("Token de acesso inválido", 500);
+  }
+
+  const maxAgeMs = Math.max(decoded.exp * 1000 - Date.now(), 0);
+  const isProd = config.env === "production";
+
+  res.cookie("grn_access_token", token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    path: "/",
+    maxAge: maxAgeMs,
+  });
+
+}
+
 export class AuthController {
-  //* Migração Supabase feita
+
   static async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       // Validação feita pelo middleware validate()
@@ -23,15 +42,7 @@ export class AuthController {
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
       )
 
-      const isProd = config.env === 'production';
-      res.cookie("grn_access_token", token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? 'none' : 'lax',
-        path: '/',
-        maxAge: 1000 * 60 * 60,
-      })
-
+      setAuthToken(res, token);
       res.status(200).json({
         user: {
           email: user.email,
@@ -69,15 +80,7 @@ export class AuthController {
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
       )
 
-      const isProd = config.env === 'production';
-      res.cookie("grn_access_token", token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? 'none' : 'lax',
-        path: '/',
-        maxAge: 1000 * 60 * 60,
-      })
-
+      setAuthToken(res, token);
       res.status(201).json({
         status: 201,
         message: "Usuário registrado com sucesso! Verifique seu email para ativar a conta.",
@@ -96,11 +99,23 @@ export class AuthController {
 
   static async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const token = req.cookies.token;
+      const token = req.cookies.grn_access_token;
       console.log(token);
 
-      res.clearCookie("grn_access_token");
-      res.clearCookie("grn_refresh_token");
+      const isProd = config.env === 'production';
+      res.clearCookie("grn_access_token", {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        path: "/",
+      });
+
+      res.clearCookie("grn_refresh_token", {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        path: "/"
+      });
 
       res.status(204).end();
       return
@@ -131,12 +146,12 @@ export class AuthController {
 
   static async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { idToken } = req.body;
+      const idToken = req.body.idToken || req.body.credential;
 
       if (!idToken) {
-        res.status(400).json({ 
-          error: "missing_token", 
-          message: "Google ID token é obrigatório." 
+        res.status(400).json({
+          error: "missing_token",
+          message: "Google ID token é obrigatório."
         });
         return;
       }
@@ -156,15 +171,7 @@ export class AuthController {
       );
 
       // Set cookie (same pattern as signIn/signUp)
-      const isProd = config.env === 'production';
-      res.cookie("grn_access_token", token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? 'none' : 'lax',
-        path: '/',
-        maxAge: 1000 * 60 * 60,
-      });
-
+      setAuthToken(res, token);
       res.status(200).json({
         user: {
           email: user.email,
@@ -180,62 +187,4 @@ export class AuthController {
       next(error);
     }
   }
-
-  // static async googleLogin(req: Request, res: Response, next: NextFunction) {
-  //   try {
-  //     const nextUrl = typeof req.query.next === "string" ? req.query.next : "/";
-
-  //     // Definir cookie antes da chamada ao service
-  //     res.cookie("post_auth_next", nextUrl, {
-  //       httpOnly: true,
-  //       secure: config.env === "production",
-  //       sameSite: "lax",
-  //       maxAge: 10 * 60 * 1000,
-  //       path: "/"
-  //     });
-
-  //     const data = await AuthService.googleLogin(req, res);
-
-  //     flushSupabaseCookies(res);
-
-  //     return res.redirect(302, data.url);
-  //   } catch (error) {
-  //     next(error)
-  //   }
-  // }
-
-  // static async googleCallback(req: Request, res: Response, next: NextFunction) {
-  //   try {
-  //     const { error, error_description } = req.query as any;
-  //     if (error) {
-  //       const errorUrl = buildFinalRedirect(`/login?e=${encodeURIComponent(error_description || error)}`)
-  //       return res.redirect(303, errorUrl);
-  //     }
-
-  //     const code = String(req.query.code || "");
-  //     if (!code) {
-  //       const errorUrl = buildFinalRedirect("/login?e=missing_code");
-  //       return res.redirect(303, errorUrl);
-  //     }
-
-  //     await AuthService.googleCallback(req, res, code);
-
-  //     const nextCookie = (req.cookies?.post_auth_next as string) || "/";
-  //     res.clearCookie("post_auth_next", { path: "/" });
-
-  //     const finalUrl = buildFinalRedirect(nextCookie);
-
-  //     // Garante envio de cookies de sessão antes do redirect
-  //     flushSupabaseCookies(res);
-
-  //     return res.redirect(303, finalUrl);
-  //   } catch (error) {
-  //     if (error instanceof CustomError) {
-  //       const errorUrl = buildFinalRedirect("/login?e=exchange_failed");
-  //       return res.redirect(303, errorUrl);
-  //     }
-  //     console.error("Callback error: ", error);
-  //     next(error)
-  //   }
-  // }
 }

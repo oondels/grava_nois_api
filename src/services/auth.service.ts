@@ -142,7 +142,7 @@ class AuthService {
       }
 
       // Evita vincular/registrar com e-mail não verificado.
-      if (email_verified !== true) {
+      if (Boolean(email_verified) !== true) {
         throw new CustomError("Email do Google não verificado.", 401);
       }
 

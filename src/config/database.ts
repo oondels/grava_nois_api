@@ -15,7 +15,7 @@ export const AppDataSource = new DataSource({
   username: config.database.user,
   password: config.database.password,
   database: config.database.name,
-  synchronize: false, // NEVER use true - always use migrations
+  synchronize: false,
   logging: false,
   entities: [Client, VenueInstallation, Payment, Video, User, UserOauth],
   subscribers: [],

@@ -7,11 +7,6 @@ import cookieParser from "cookie-parser";
 import { randomUUID } from "crypto";
 import helmet from "helmet";
 
-// Rotas temporárias (Felix3D)
-import pedidosRouter from "./routes/felix3D/pedidos";
-import produtosRouter from "./routes/felix3D/produtos";
-import { financeiroRouter } from "./routes/felix3D/financeiro";
-
 import { userRouter } from "./routes/userPage";
 import { videoRouter } from "./routes/video.route";
 import { authRouter } from "./routes/auth.route";
@@ -36,8 +31,9 @@ AppDataSource.initialize()
 
       app.use(helmet());
       app.use(cookieParser());
-      app.use(express.json({ limit: '10mb' }));
+      app.use(express.json({ limit: '1mb' }));
       app.set("trust proxy", 1);
+
       // Correlation id for logs and responses
       app.use((req: Request, res: Response, next: NextFunction) => {
         const requestId = (req.headers["x-request-id"] as string) || randomUUID();
@@ -45,6 +41,7 @@ AppDataSource.initialize()
         (res.locals as any).requestId = requestId;
         next();
       });
+      
       app.use(
         cors({
           origin(origin, cb) {
@@ -58,11 +55,6 @@ AppDataSource.initialize()
           exposedHeaders: ["Set-Cookie"],
         })
       );
-
-      // Temporary routes (Felix3D)
-      app.use("/temp_felix3d/pedidos", pedidosRouter);
-      app.use("/temp_felix3d/produtos", produtosRouter);
-      app.use("/temp_felix3d/financeiro", financeiroRouter);
 
       // App routes
       app.use("/users", userRouter);

@@ -21,7 +21,6 @@ export class User {
   @Column({ type: "varchar", length: 64, nullable: true })
   username?: string | null;
 
-  // Mesmo que no banco ainda esteja NOT NULL, para OAuth você já alterou pra aceitar NULL
   @Column({ type: "varchar", length: 255, nullable: true })
   password?: string | null;
 
