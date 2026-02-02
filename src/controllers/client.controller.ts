@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { clientService } from "../services/client.service";
 import { venueInstallationService } from "../services/venueInstallation.service";
 import { logger } from "../utils/logger";
@@ -20,9 +21,12 @@ export class ClientController {
 
   async createVenueInstallation(req: Request, res: Response, next: NextFunction) {
     try {
-      const { clientId } = req.params;
+      const paramsSchema = z.object({
+        clientId: z.string().min(1),
+      });
 
-      if (!clientId) {
+      const paramsParsed = paramsSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
         res.status(400).json({
           success: false,
           error: {
@@ -33,6 +37,8 @@ export class ClientController {
         });
         return;
       }
+
+      const { clientId } = paramsParsed.data;
 
       const newVenue = await venueInstallationService.createVenueInstallation(
         clientId,
