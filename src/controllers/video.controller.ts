@@ -1,13 +1,23 @@
 import { Request, Response, NextFunction } from "express";
 import { videoService } from "../services/video.service";
-import { string, z } from "zod";
+import { z } from "zod";
 import { CustomError } from "../types/CustomError";
 import { logger } from "../utils/logger";
 
 export class VideoController {
   static async createVideoMetadata(req: Request, res: Response, next: NextFunction) {
     try {
-      const { clientId, venueId } = req.params;
+      const paramsSchema = z.object({
+        clientId: z.string().uuid(),
+        venueId: z.string().uuid(),
+      });
+      const paramsParsed = paramsSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
+        res.status(400).json({ error: "Invalid params", details: paramsParsed.error.flatten() });
+        return;
+      }
+
+      const { clientId, venueId } = paramsParsed.data;
 
       console.log("New video metadata received for client:", clientId, "venue:", venueId);
 
@@ -43,7 +53,16 @@ export class VideoController {
 
   static async finalizeVideoUpload(req: Request, res: Response, next: NextFunction) {
     try {
-      const { videoId } = req.params;
+      const paramsSchema = z.object({
+        videoId: z.string().uuid(),
+      });
+      const paramsParsed = paramsSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
+        res.status(400).json({ error: "Invalid params", details: paramsParsed.error.flatten() });
+        return;
+      }
+
+      const { videoId } = paramsParsed.data;
 
       // Validate body
       const bodySchema = z.object({
