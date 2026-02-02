@@ -36,6 +36,13 @@ export class Client {
   @Column({ type: 'varchar', length: 255, nullable: true })
   paymentCustomerId?: string | null; // Stripe/MercadoPago id
 
+  @Column({
+    type: 'int',
+    default: 3,
+    comment: 'Tempo em dias para manter os vídeos hospedados no S3'
+  })
+  retentionDays!: number;
+
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAt!: Date;
 
