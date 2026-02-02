@@ -1,5 +1,6 @@
 import express from "express";
 import { VideoController } from "../controllers/video.controller";
+import { authenticateToken } from "../middlewares/auth.middleware";
 
 export const videoRouter = express.Router();
 
@@ -92,7 +93,7 @@ videoRouter.post("/api/videos/:videoId/uploaded", VideoController.finalizeVideoU
  *   nextToken: string | null
  * }
  */
-videoRouter.get("/api/videos/list", VideoController.listVideos);
+videoRouter.get("/api/videos/list", authenticateToken, VideoController.listVideos);
 
 /**
  * GET /api/videos/sign
@@ -111,7 +112,7 @@ videoRouter.get("/api/videos/list", VideoController.listVideos);
  *   url: string | null
  * }
  */
-videoRouter.get("/api/videos/sign", VideoController.signVideoUrl);
+videoRouter.get("/api/videos/sign", authenticateToken, VideoController.signVideoUrl);
 
 /**
  * GET /videos-clips
@@ -133,4 +134,4 @@ videoRouter.get("/api/videos/sign", VideoController.signVideoUrl);
  *   }>
  * }
  */
-videoRouter.get("/videos-clips", VideoController.getClipsByVenue);
+videoRouter.get("/videos-clips", authenticateToken, VideoController.getClipsByVenue);

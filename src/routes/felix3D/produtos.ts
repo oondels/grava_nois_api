@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../../config/pg'
+import { logger } from '../../utils/logger'
 
 const router = Router()
 
 // Listar todos os produtos
 router.get('/', async (req: Request, res: Response) => {
-  console.log('listando produtos')
+  logger.info('felix3d-produtos', 'Listando produtos')
 
   const client = await pool.connect()
   try {
@@ -22,10 +23,10 @@ router.get('/', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao fazer rollback:', rollbackError)
+      logger.error('felix3d-produtos', `Erro ao fazer rollback: ${rollbackError}`)
     }
 
-    console.error('Falha inesperada ao listar produtos:', e)
+    logger.error('felix3d-produtos', `Falha inesperada ao listar produtos: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao listar produtos', details: String(e) })
   } finally {
     client.release()
@@ -35,7 +36,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Postar produto
 router.post('/', async (req: Request, res: Response) => {
   const client = await pool.connect()
-  console.log('novo produto')
+  logger.info('felix3d-produtos', 'Criando novo produto')
 
   try {
     await client.query('BEGIN')
@@ -86,9 +87,9 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-produtos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao cadastrar produto:', e)
+    logger.error('felix3d-produtos', `Falha inesperada ao cadastrar produto: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao cadastrar produto', details: String(e) })
   } finally {
     client.release()
@@ -158,9 +159,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-produtos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao atualizar produto:', e)
+    logger.error('felix3d-produtos', `Falha inesperada ao atualizar produto: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao atualizar produto', details: String(e) })
   } finally {
     client.release()
@@ -207,9 +208,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-produtos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao deletar produto:', e)
+    logger.error('felix3d-produtos', `Falha inesperada ao deletar produto: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao deletar produto', details: String(e) })
   } finally {
     client.release()

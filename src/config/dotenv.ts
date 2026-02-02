@@ -10,9 +10,9 @@ dotenv.config({ path: ENV_FILE });
 const REQUIRED_ENV_VARS: string[] = [
   // URLs e chaves de serviços externos
   'BACKEND_PUBLIC_URL',
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_KEY',
-  'SUPABASE_PUBLISHABLE_KEY',
+  'JWT_SECRET',
+  'JWT_EXPIRES_IN',
+  'GOOGLE_CLIENT_ID',
   // E-mail (transporter)
   'EMAIL_USER',
   'EMAIL_PASS',
@@ -23,6 +23,11 @@ const REQUIRED_ENV_VARS: string[] = [
   'AWS_REGION',
   'S3_BUCKET_NAME'
 ];
+
+// Variáveis opcionais com valores padrão
+const OPTIONAL_ENV_VARS: Record<string, string> = {
+  'BCRYPT_SALT_ROUNDS': '12',
+};
 
 // Em produção, exige também DB e RabbitMQ
 if (CURRENT_ENV === 'production') {
@@ -70,10 +75,11 @@ export const config = {
 
   backend_public_url: process.env.BACKEND_PUBLIC_URL || '',
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
-
-  supabaseUrl: process.env.SUPABASE_URL || '',
-  supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || '',
-  supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || '',
+  jwt_secret: process.env.JWT_SECRET || 'default_secret',
+  jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
+  bcrypt_salt_rounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
+  google_client_id: process.env.GOOGLE_CLIENT_ID || '',
+  cookie_max_age: parseInt(process.env.COOKIE_MAX_AGE || String(1000 * 60 * 60), 10), // 1 hora
 
   aws_access_key_id: process.env.AWS_ACCESS_KEY_ID || '',
   aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY || '',

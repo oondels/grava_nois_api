@@ -1,154 +1,184 @@
 import { Request, Response, NextFunction } from "express"
-import { z } from "zod";
-import { AuthService } from "../services/auth.service"
+import { authService } from "../services/auth.service"
 import { config } from "../config/dotenv";
-import { ALLOWED_ORIGINS } from "../index";
 import { CustomError } from "../types/CustomError";
-import { flushSupabaseCookies } from "../config/supabase";
+import jwt from 'jsonwebtoken';
+import { signInSchema } from "../validation/auth.schemas";
 
-const signInSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres")
-});
-
-
-function buildFinalRedirect(nextRaw: string | undefined | null) {
-  // fallback
-  let next = typeof nextRaw === "string" ? nextRaw : "/";
-
-  try {
-    // caso absoluto (http/https)
-    if (/^https?:\/\//i.test(next)) {
-      const url = new URL(next);
-      if (ALLOWED_ORIGINS.has(`${url.protocol}//${url.host}`)) {
-        // absoluto permitido
-        return url.toString();
-      }
-      // origem não permitida → cai para fallback
-      next = "/";
-    }
-  } catch {
-    next = "/";
+function setAuthToken(res: Response, token: string) {
+  const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+  if (!decoded || !decoded.exp) {
+    throw new CustomError("Token de acesso inválido", 500);
   }
 
-  // caso relativo → prefixa com FRONTEND_ORIGIN
-  if (!next.startsWith("/")) next = "/";
-  const base = Array.from(ALLOWED_ORIGINS)[0] || "http://localhost:5173";
-  return `${config.env === "production" ? base : "http://localhost:5173"}${next}`;
+  const maxAgeMs = Math.max(decoded.exp * 1000 - Date.now(), 0);
+  const isProd = config.env === "production";
+
+  res.cookie("grn_access_token", token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    path: "/",
+    maxAge: maxAgeMs,
+  });
+
 }
 
 export class AuthController {
-  static async signIn(req: Request, res: Response, next: NextFunction) {
+
+  static async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const validation = signInSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({
-          error: "validation_failed",
-          details: validation.error.issues
-        });
-      }
+      // Validação feita pelo middleware validate()
+      const { email, password } = req.body;
+      const user = await authService.signIn(email, password);
 
-      const { email, password } = validation.data;
-      await AuthService.signIn(email, password, req, res);
+      const token = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role
+        },
+        config.jwt_secret as jwt.Secret,
+        { expiresIn: config.jwt_expires_in } as jwt.SignOptions
+      )
 
-      return res.status(204).end();
+      setAuthToken(res, token);
+      res.status(200).json({
+        user: {
+          email: user.email,
+          username: user.username,
+          emailVerified: user.emailVerified,
+          role: user.role,
+        },
+        status: 200,
+        message: "Login realizado com sucesso!"
+      })
+      return
     } catch (error) {
       next(error);
     }
   }
 
-  static async signUp(req: Request, res: Response, next: NextFunction) {
+  static async signUp(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { email, password } = req.body ?? {};
-      if (!email || !password) return res.status(400).json({ error: "missing_credentials" });
+      const { email, password, name } = req.body ?? {};
 
-      await AuthService.signUp(email, password, req, res);
+      const newUser = await authService.signUp(email, password, name);
 
-      // Se “Email confirmations” estiver ON, o usuário só loga após confirmar por e-mail
-      return res.status(200).json({ status: "check_email" });
-    } catch (error) {
-      next(error)
-    }
-  }
+      const token = jwt.sign(
+        {
+          userId: newUser.id,
+          email: newUser.email,
+          role: newUser.role
+        },
+        config.jwt_secret as jwt.Secret,
+        { expiresIn: config.jwt_expires_in } as jwt.SignOptions
+      )
 
-  static async signOut(req: Request, res: Response, next: NextFunction) {
-    try {
-      await AuthService.signOut(req, res);
-
-      return res.status(204).end();
-    } catch (error) {
-      next(error)
-    }
-  }
-
-  static async authMe(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { user, profile } = await AuthService.getUser(req, res);
-
-      return res.json({
-        user: { id: user.id, email: user.email, app_metadata: user.app_metadata },
-        profile,
+      setAuthToken(res, token);
+      res.status(201).json({
+        status: 201,
+        message: "Usuário registrado com sucesso! Verifique seu email para ativar a conta.",
+        user: {
+          email,
+          username: newUser.username,
+          emailVerified: newUser.emailVerified,
+          role: newUser.role,
+        }
       });
+      return
     } catch (error) {
       next(error)
     }
   }
 
-  static async googleLogin(req: Request, res: Response, next: NextFunction) {
+  static async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const nextUrl = typeof req.query.next === "string" ? req.query.next : "/";
-
-      // Definir cookie antes da chamada ao service
-      res.cookie("post_auth_next", nextUrl, {
+      const isProd = config.env === 'production';
+      res.clearCookie("grn_access_token", {
         httpOnly: true,
-        secure: config.env === "production",
-        sameSite: "lax",
-        maxAge: 10 * 60 * 1000,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        path: "/",
+      });
+
+      res.clearCookie("grn_refresh_token", {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
         path: "/"
       });
 
-      const data = await AuthService.googleLogin(req, res);
-
-      flushSupabaseCookies(res);
-
-      return res.redirect(302, data.url);
+      res.status(204).end();
+      return
     } catch (error) {
       next(error)
     }
   }
 
-  static async googleCallback(req: Request, res: Response, next: NextFunction) {
+  static async authMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { error, error_description } = req.query as any;
-      if (error) {
-        const errorUrl = buildFinalRedirect(`/login?e=${encodeURIComponent(error_description || error)}`)
-        return res.redirect(303, errorUrl);
+      const user = req.user;
+      if (!user) {
+        res.status(401).json({ message: "Usuário não autenticado." });
+        return;
       }
 
-      const code = String(req.query.code || "");
-      if (!code) {
-        const errorUrl = buildFinalRedirect("/login?e=missing_code");
-        return res.redirect(303, errorUrl);
-      }
+      const foundedUser = await authService.getUser(user.id);
 
-      await AuthService.googleCallback(req, res, code);
-
-      const nextCookie = (req.cookies?.post_auth_next as string) || "/";
-      res.clearCookie("post_auth_next", { path: "/" });
-
-      const finalUrl = buildFinalRedirect(nextCookie);
-
-      // Garante envio de cookies de sessão antes do redirect
-      flushSupabaseCookies(res);
-
-      return res.redirect(303, finalUrl);
+      res.json({
+        status: 200,
+        foundedUser
+      });
+      return;
     } catch (error) {
-      if (error instanceof CustomError) {
-        const errorUrl = buildFinalRedirect("/login?e=exchange_failed");
-        return res.redirect(303, errorUrl);
+      next(error);
+    }
+  }
+
+  static async googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const idToken = req.body.idToken || req.body.credential;
+
+      if (!idToken) {
+        res.status(400).json({
+          error: "missing_token",
+          message: "Google ID token é obrigatório."
+        });
+        return;
       }
-      console.error("Callback error: ", error);
-      next(error)
+
+      // Authenticate with Google
+      const user = await authService.googleLogin(idToken);
+
+      // Generate JWT token (same pattern as signIn/signUp)
+      const token = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role
+        },
+        config.jwt_secret as jwt.Secret,
+        { expiresIn: config.jwt_expires_in } as jwt.SignOptions
+      );
+
+      // Set cookie (same pattern as signIn/signUp)
+      setAuthToken(res, token);
+      res.status(200).json({
+        user: {
+          email: user.email,
+          username: user.username,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          emailVerified: user.emailVerified,
+          role: user.role,
+        },
+        status: 200,
+        message: "Login com Google realizado com sucesso!"
+      });
+      return;
+    } catch (error) {
+      next(error);
     }
   }
 }

@@ -1,202 +1,318 @@
 # Grava Nóis API
 
-## Overview
-Grava Nóis API is a TypeScript/Express backend that powers the Grava Nóis video platform. It handles Supabase-based authentication, video ingestion and storage on AWS S3, contact and feedback forms, and operational tooling for client/venue management.
+Backend da plataforma Grava Nóis para captura, organização e entrega de replays esportivos. Este serviço expõe endpoints para autenticação, gestão de clientes/instalações (quadras), ingestão de clipes (upload direto no S3 via URL assinada), consulta de biblioteca e notificações operacionais.
 
-## Architecture Highlights
-- Express with TypeScript, structured around feature routers in `src/routes`.
-- TypeORM for the primary PostgreSQL database (`grn_*` schemas) and `postgres` tagged template for Supabase profile access.
-- AWS SDK v3 for S3 uploads, presigned URLs, and object verification.
-- Nodemailer for transactional e-mail delivery via SMTP.
-- Optional RabbitMQ integration prepared for clip pipeline fan-out (`src/rabbitmq`).
-- Dockerfile and docker-compose recipe for production-style deployments on port `2399`.
+Este README é voltado para:
+- Pessoas desenvolvedoras (onboarding e operação do serviço)
+- Parceiros que precisam integrar dispositivos/softwares ao fluxo de ingestão e consumo de clipes
 
-## Prerequisites
-- Node.js 20+
-- PostgreSQL 14+ (primary Grava Nóis database)
-- A Supabase project (profiles table lives in Supabase)
-- AWS S3 bucket and credentials
-- SMTP credentials for outbound e-mail
-- (Optional) RabbitMQ broker
-- (Optional) Secondary PostgreSQL database for Felix3D routes
+---
 
-## Environment Configuration
-Create a `.env` file for development (the app loads `.env` when `NODE_ENV=development` and `.env.production` otherwise). All variables below are validated on startup.
+## Visão geral do fluxo
 
-### Core service
-| Variable | Required | Description |
-| --- | --- | --- |
-| `NODE_ENV` | no | Defaults to `development`; toggles config file and TypeORM sync. |
-| `PORT` | no | API port in development (default `3000`). |
-| `BACKEND_PUBLIC_URL` | yes | Public base URL used to build Supabase OAuth callbacks. |
-| `COOKIE_SAME_SITE` | yes | SameSite strategy for Supabase auth cookies (`lax`, `strict`, `none`). |
-| `SUPABASE_URL` | yes | Supabase project URL. |
-| `SUPABASE_SERVICE_KEY` | yes | Service role key used for backend operations. |
-| `SUPABASE_PUBLISHABLE_KEY` | yes | Public anon key needed to bootstrap SSR client. |
-| `SUPABASE_DATABASE` | yes | Connection string for direct SQL access to Supabase (used by `src/config/pg.ts`). |
+Em alto nível, o sistema funciona assim:
 
-### Primary PostgreSQL (TypeORM)
-| Variable | Required | Description |
-| --- | --- | --- |
-| `DB_HOST` | yes (production) | Host of the Grava Nóis database. |
-| `DB_PORT` | yes (production) | Port (default `5432`). |
-| `DB_USER` | yes (production) | Database user. |
-| `DB_PASSWORD` | yes (production) | Database password. |
-| `DB_NAME` | yes (production) | Database name. |
+1) **Cadastro e configuração**
+   - Um cliente (organização) é cadastrado.
+   - Uma instalação de quadra é registrada e parametrizada (ex.: contrato, buffers, etc.).
 
-### AWS S3
-| Variable | Required | Description |
-| --- | --- | --- |
-| `AWS_ACCESS_KEY_ID` | yes | Access key for the bucket. |
-| `AWS_SECRET_ACCESS_KEY` | yes | Secret key. |
-| `AWS_REGION` | yes | Region (e.g. `sa-east-1`). |
-| `S3_BUCKET_NAME` | yes | Bucket storing clip uploads. |
+2) **Ingestão de clipe (upload)**
+   - O parceiro solicita à API uma **URL assinada de upload** informando `clientId`, `venueId` e metadados mínimos do clipe.
+   - O upload do arquivo é feito **direto do dispositivo para o S3** (PUT na URL assinada).
+   - Após o upload, o parceiro chama um endpoint de “finalização” para a API validar o objeto (S3 HEAD) e atualizar o status no banco.
 
-### SMTP / E-mail
-| Variable | Required | Description |
-| --- | --- | --- |
-| `EMAIL_HOST` | no | SMTP host (defaults to `smtp.gmail.com`). |
-| `EMAIL_USER` | yes | SMTP username. |
-| `EMAIL_PASS` | yes | SMTP password or app token. |
+3) **Biblioteca / consumo**
+   - A listagem é feita **a partir do banco** (fonte de verdade) e, quando necessário, o servidor consulta metadados no S3 e retorna URLs assinadas de leitura.
 
-### RabbitMQ (optional)
-| Variable | Required | Description |
-| --- | --- | --- |
-| `RABBITMQ_URL` | yes (production) | Connection URI for clip events exchange (defaults to `amqp://localhost` in dev). |
+---
 
-## Installation & Local Development
-1. Install dependencies: `npm install`.
-2. Create `.env` and populate the variables above. Provide valid credentials for both databases, Supabase, AWS, and SMTP.
-3. Prepare the PostgreSQL database schemas (`grn_clients`, `grn_core`, `grn_billing`, `grn_videos`). The initial TypeORM migration creates the required tables: `npm run migration:run`.
-4. Start the development server with live reload: `npm run dev`. The API listens on `http://localhost:3000` by default.
+## Arquitetura
 
-### Useful scripts
-- `npm run build` – compile TypeScript to `dist`.
-- `npm run migration:generate -- <Name>` – scaffold a migration using the current entity state.
-- `npm run migration:run` / `npm run migration:revert` – apply or rollback migrations.
-- `npm run typeorm -- <command>` – access the TypeORM CLI wrapper. Tests are not yet implemented.
+Pontos principais:
 
-## Running with Docker
-1. Provide a `.env.production` file in the project root.
-2. Build and run: `docker compose up --build`.
-3. The container exposes port `2399` (mapped in `docker-compose.yml`); adjust the compose file if you prefer a different host port.
+- **Node.js + Express + TypeScript** (entrada em `src/index.ts`).
+- **PostgreSQL (primário)** via **TypeORM** e migrations (entidades em `src/models`, DataSource em `src/config/database.ts`).
+- **AWS S3 (SDK v3)** para URLs assinadas e validação de objetos (`src/config/s3Client.ts`, `src/services/video.service.ts`).
+- **JWT** para autenticação (cookie HTTP-only e suporte a `Authorization: Bearer`) (`src/middlewares/auth.middleware.ts`).
+- **Login Google** via validação de **Google ID Token** (`google-auth-library`) (`src/services/auth.service.ts`).
+- **SMTP/Nodemailer** para contato e reporte de erro (`src/services/notification/*`).
+- **RabbitMQ** preparado para fan-out de eventos (ex.: pipeline de processamento), com conexão em `src/rabbitmq`.
 
-## Project Structure
+### Organização do código
+
 ```
 src/
-  config/          // database, env, S3, Supabase clients
-  middlewares/     // future middleware hooks
-  migrations/      // TypeORM migrations
-  models/          // TypeORM entities (clients, venues, payments, videos)
-  rabbitmq/        // connection helpers for the clips exchange
-  routes/          // Express routers grouped by feature
-  services/        // business logic (video service)
-  types/           // shared custom types/errors
+  config/          Carregamento de env, DataSource TypeORM, client S3, conexões
+  controllers/     Camada HTTP: validação de inputs e formatação de respostas
+  middlewares/     Auth (JWT) e error handler padronizado
+  migrations/      Migrations do TypeORM
+  models/          Entidades do domínio (TypeORM)
+  rabbitmq/        Conexão e publisher (quando habilitado)
+  routes/          Definição das rotas por contexto
+  services/        Regras de negócio e integrações (DB/S3/Google)
+  types/           Tipos compartilhados e erros
+  utils/           Logger e helpers
+  validation/      Schemas Zod de validação (quando aplicável)
 ```
 
-## API Overview
-Endpoints are grouped by router; all responses are JSON unless noted.
+---
 
-### Health & Misc
-- `GET /` – Basic health check.
+## Requisitos
 
-### Authentication (Supabase-backed)
-- `POST /sign-in` – Email/password sign-in; sets Supabase session cookies.
-- `POST /sign-up` – Email/password registration; Supabase confirmation rules apply.
-- `POST /sign-out` – Clears Supabase auth cookies.
-- `GET /auth/me` – Returns current Supabase user and profile (`grn_auth.profiles`).
-- `GET /auth/login/google?next=/path` – Initiates Google OAuth flow.
-- `GET /auth/callback` – Handles Supabase OAuth callback.
+- Node.js 20+
+- PostgreSQL 14+
+- Bucket S3 + credenciais (upload/download)
+- SMTP para envio de e-mails (contato e reporte)
+- (Opcional) RabbitMQ para integração com pipeline assíncrono
 
-### Video Ingestion & Library
-- `POST /api/videos/metadados/client/:clientId/venue/:venueId` – Registra metadados do clipe e retorna URL assinada de upload (S3 PUT). O caminho final (`storagePath`) é definido conforme o contrato (`monthly_subscription` vs `per_video`).
-- `POST /api/videos/:videoId/uploaded` – Verifica o objeto enviado via S3 (`HeadObject`), confere tamanho/ETag opcional e atualiza o status (`uploaded` ou `uploaded_temp`).
-- `GET /api/videos/list?venueId=&limit=&token=&includeSignedUrl=&ttl=` – Lista vídeos a partir do banco (fonte de verdade), ordenando por `capturedAt DESC`. O backend deriva o prefixo do S3 a partir da instalação e do contrato; realiza `HeadObject` por item para metadados, marca `missing=true` quando não encontrado e opcionalmente inclui URL assinada.
-- `GET /api/videos/sign?path=&kind=&ttl=` – Gera URL assinada (preview/download) para um objeto específico.
-- `GET /videos-clips?venueId=` – Retorna clipes de uma `venue` com URLs assinadas de curta duração.
+---
 
-#### GET /api/videos/list
+## Configuração de ambiente
 
-Lista vídeos consultando primeiro o banco (fonte de verdade). O servidor deriva automaticamente o prefixo de S3 a partir da instalação (`VenueInstallation`) e do método de contrato:
+O projeto carrega automaticamente:
+- `.env` quando `NODE_ENV=development`
+- `.env.production` quando `NODE_ENV!=development`
 
-- `monthly_subscription` → `main/clients/{clientId}/venues/{venueId}/`
-- `per_video` → `temp/{clientId}/{venueId}/`
+As variáveis abaixo são validadas no startup (falha rápida).
 
-Para cada item, obtém metadados diretamente do S3 via `HeadObject`. Se o objeto não existir no S3, o item é retornado com `missing=true`. Opcionalmente, uma URL assinada é gerada para cada item quando solicitado.
+### Serviço (geral)
 
-Query params:
-- venueId: string (obrigatório)
-- limit: number (opcional, padrão 100, intervalo 1..100)
-- token: string (opcional)
-  - Posição/offset para a próxima página, retornado como `nextToken` na página anterior.
-- includeSignedUrl: boolean (opcional, padrão false)
-  - Quando `true`, retorna `url` assinada para cada item não ausente no S3.
-- ttl: number (opcional, padrão 3600, intervalo 60..3600)
-  - Validade, em segundos, da URL assinada.
+| Variável | Obrigatória | Descrição |
+| --- | --- | --- |
+| `NODE_ENV` | não | `development` ou `production`. Define também qual arquivo `.env` é carregado. |
+| `PORT` | não | Porta HTTP do Express (padrão: `3000`). |
+| `BACKEND_PUBLIC_URL` | sim | Base pública do backend (útil para compor URLs em integrações). |
+| `COOKIE_SAME_SITE` | sim | Política SameSite padrão do serviço (ex.: `lax`, `none`). |
+| `JWT_SECRET` | sim | Segredo de assinatura do JWT. |
+| `JWT_EXPIRES_IN` | sim | Expiração do JWT (ex.: `1h`). |
+| `BCRYPT_SALT_ROUNDS` | não | Rounds do bcrypt (padrão: `12`). |
+| `GOOGLE_CLIENT_ID` | sim | Audience esperada ao validar o Google ID Token. |
+| `DEV_EMAIL` | não | Destinatário padrão dos e-mails de contato/reporte (fallback interno). |
 
-Resposta:
+### PostgreSQL (primário / TypeORM)
+
+Em produção, estas variáveis passam a ser obrigatórias:
+
+| Variável | Obrigatória em produção | Descrição |
+| --- | --- | --- |
+| `DB_HOST` | sim | Host do banco primário. |
+| `DB_PORT` | sim | Porta do banco (normalmente `5432`). |
+| `DB_USER` | sim | Usuário do banco. |
+| `DB_PASSWORD` | sim | Senha do banco. |
+| `DB_NAME` | sim | Nome do banco. |
+
+### AWS S3
+
+| Variável | Obrigatória | Descrição |
+| --- | --- | --- |
+| `AWS_ACCESS_KEY_ID` | sim | Access key do bucket. |
+| `AWS_SECRET_ACCESS_KEY` | sim | Secret. |
+| `AWS_REGION` | sim | Região (ex.: `sa-east-1`). |
+| `S3_BUCKET_NAME` | sim | Bucket que armazena os clipes. |
+
+### SMTP / E-mail
+
+| Variável | Obrigatória | Descrição |
+| --- | --- | --- |
+| `EMAIL_HOST` | não | Host SMTP (padrão: `smtp.gmail.com`). |
+| `EMAIL_USER` | sim | Usuário SMTP. |
+| `EMAIL_PASS` | sim | Senha/app password. |
+
+### RabbitMQ (opcional)
+
+| Variável | Obrigatória em produção | Descrição |
+| --- | --- | --- |
+| `RABBITMQ_URL` | sim | URI do broker. |
+
+### Perfil de usuário (consulta)
+
+O endpoint `/users/:id` consulta dados em `grn_auth.profiles` via conexão SQL direta. Para usar esse endpoint, defina:
+
+| Variável | Obrigatória | Descrição |
+| --- | --- | --- |
+| `SUPABASE_DATABASE` | depende do uso | Connection string para a base que contém `grn_auth.profiles`. |
+
+---
+
+## Banco de dados e migrations
+
+O banco primário é organizado por schemas `grn_*` (ex.: `grn_clients`, `grn_core`, `grn_videos`). As entidades TypeORM estão em `src/models` e as migrations em `src/migrations`.
+
+Comandos principais:
+
+- Instalar dependências: `npm install`
+- Rodar em desenvolvimento (porta padrão 3000): `npm run dev`
+- Build: `npm run build`
+- Aplicar migrations: `npm run migration:run`
+- Reverter última migration: `npm run migration:revert`
+- Gerar migration: `npm run migration:generate -- <Nome>`
+
+---
+
+## Como rodar
+
+### Local (desenvolvimento)
+
+1. Crie `.env` com as variáveis necessárias.
+2. Garanta acesso ao PostgreSQL e ao bucket S3.
+3. Rode migrations: `npm run migration:run`
+4. Suba a API: `npm run dev`
+
+A API ficará disponível em `http://localhost:3000` (a menos que `PORT` seja definido).
+
+### Docker (produção/local-prod)
+
+O repositório inclui `Dockerfile` e `docker-compose.yml`. Para subir:
+
+1. Crie `.env.production`.
+2. Execute: `docker compose up --build`
+
+Observação sobre porta:
+- A aplicação **escuta** a porta definida em `PORT` (padrão `3000`).
+- O `docker-compose.yml` atual mapeia `2399:2399`. Se você quiser manter a convenção `3000`, ajuste o compose para `3000:3000` e garanta `PORT=3000` no `.env.production`.
+
+---
+
+## Autenticação e segurança
+
+### JWT
+
+O serviço emite um JWT e grava em cookie HTTP-only `grn_access_token`. Rotas protegidas aceitam:
+- Cookie `grn_access_token`
+- Header `Authorization: Bearer <token>`
+
+O middleware normaliza o payload para `req.user = { id, email, role }`.
+
+### Login com Google
+
+O endpoint de Google recebe `idToken` (Google ID Token) e valida com audience `GOOGLE_CLIENT_ID`. Em seguida, cria/vincula usuário no banco e emite o mesmo JWT.
+
+### CORS e proxy
+
+- CORS é por allowlist (origens explícitas) e com `credentials: true`.
+- `trust proxy` está habilitado para compatibilidade em ambientes atrás de proxy/load balancer.
+
+### Rate limiting
+
+Os endpoints de autenticação aplicam rate limit para reduzir tentativas de brute-force.
+
+---
+
+## Padrões de resposta e erros
+
+Erros são padronizados pelo middleware global e incluem `requestId` (correlation id):
+
 ```json
 {
-  "items": [
-    {
-      "clip_id": "uuid",
-      "path": "temp/<clientId>/<venueId>/<clip>.mp4",
-      "bucket": "<bucket>",
-      "size": 1048576,
-      "last_modified": "2025-10-07T12:34:56.000Z",
-      "url": "https://...",
-      "missing": false,
-      "captured_at": "2025-10-07T12:32:10.000Z",
-      "contract_type": "monthly_subscription"
-    }
-  ],
-  "count": 1,
-  "hasMore": true,
-  "nextToken": "5"
+  "success": false,
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "Erro interno no servidor."
+  },
+  "requestId": "..."
 }
 ```
 
-Observações:
-- Ordenação é `capturedAt DESC`.
-- Paginação usa offset baseado no `token` (string numérica). `nextToken` é `null` quando não há mais itens.
-- `Cache-Control`: quando `includeSignedUrl=false`, `private, max-age=15`; quando `true`, `private, max-age=0`.
+O servidor adiciona `X-Request-Id` na resposta (gerado ou reaproveitado do header de entrada).
 
-### Client & Venue Management
-- `POST /api/clients/` – Creates a client record (requires `legalName`, `email`, and either `cnpj` or `responsibleCpf`).
-- `POST /api/venue-installations/:clientId` – Registers a venue installation tied to a client.
-- `GET /quadrasFiliadas` – Lists registered venues (work-in-progress route).
+---
 
-### User Profiles
-- `GET /users/:id` – Fetches Supabase profile data.
-- `PATCH /users/:id` – Updates mutable fields on a profile (diff-based).
+## Endpoints (resumo)
 
-### Contact & Feedback Forms
-- `POST /send-email` – Sends lead/prospect information to the configured inbox.
-- `POST /send-report` – Sends internal bug reports with optional reproduction steps.
-- `POST /send-feedback` – Sends general feedback from the site.
+### Health
 
-### Felix3D Temporary Endpoints
-These routes target a separate database (via `TEMP_DB_*` variables) and are intended for internal tooling:
-- `GET/POST/PUT/DELETE /temp_felix3d/pedidos`
-- `GET/POST/PUT/DELETE /temp_felix3d/produtos`
-- `GET/POST/PUT/DELETE /temp_felix3d/financeiro`
+- `GET /` – Health check.
 
-## Data Model Summary
-Entities live in the `grn_*` schemas:
-- `Client` (`grn_clients.clients`) – Identifies an organization, contact info, and payment linkage.
-- `VenueInstallation` (`grn_core.venue_installations`) – Tracks camera installations, contract method, and operational metadata.
-- `Payment` (`grn_billing.payments`) – Logs billing events and provider identifiers.
-- `Video` (`grn_videos.videos`) – Represents clips, storage path, contract type, upload status, and metadata.
+### Auth (`/auth`)
 
-The initial migration (`src/migrations/1755169373372-InitialMigration.ts`) sets up all four tables plus enums and indexes.
+- `POST /auth/sign-in` – Login com email/senha.
+- `POST /auth/sign-up` – Registro com email/senha.
+- `POST /auth/sign-out` – Logout (limpa cookies).
+- `POST /auth/google` – Login com Google (via ID token).
+- `GET /auth/me` – Retorna o usuário autenticado (requer JWT).
 
-## Background Jobs & Integrations
-- **S3 uploads** – `VideoService.createSignedUrlVideo` gera URLs assinadas de PUT; `VideoService.finalizeUpload` valida objetos via `HeadObjectCommand`. A listagem (`VideoService.listVideos`) deriva o prefixo do S3 a partir da `VenueInstallation` (contrato), usa `HeadObject` por item para metadados e marca itens ausentes com `missing=true`; URLs de preview/download podem ser geradas sob demanda com `includeSignedUrl`.
-- **RabbitMQ** – Prepared helper (`publishClipEvent`) to emit clip events to the `grn.clips` topic exchange. Publishing is currently commented out in `src/index.ts`.
-- **Supabase** – `@supabase/ssr` manages auth cookies with server-side helpers; `supabaseDb` template supports direct profile queries.
-- **Nodemailer** – Sends HTML and plaintext variants for lead, bug report, and feedback workflows.
+### Vídeos
 
-## Notes & Next Steps
-- Automated tests are not yet defined; consider adding integration tests around video ingestion and Supabase auth flows.
-- Middleware scaffolding (`src/middlewares/auth.middleware.ts`) is empty and ready to host shared guards when access control is introduced.
-- Monitor environment validation errors early—`src/config/dotenv.ts` will throw on missing variables to prevent silent misconfiguration.
+- `POST /api/videos/metadados/client/:clientId/venue/:venueId`
+  - Cria registro do clipe e retorna `upload_url` (S3 PUT).
+  - Body mínimo validado hoje:
+    - `venue_id` (UUID)
+    - `captured_at` (string)
+    - `sha256` (hex SHA-256)
+
+- `POST /api/videos/:videoId/uploaded`
+  - Valida o objeto no S3 (tamanho e ETag opcional) e atualiza status.
+  - Body:
+    - `size_bytes` (number)
+    - `sha256` (hex SHA-256)
+    - `etag` (opcional)
+
+- `GET /api/videos/list?venueId=...&limit=...&token=...&includeSignedUrl=...&ttl=...`
+  - Lista clipes a partir do banco (ordenado por `capturedAt DESC`).
+  - Opcionalmente inclui URL assinada de leitura por item.
+
+- `GET /api/videos/sign?path=...&kind=preview|download&ttl=...`
+  - Gera URL assinada de leitura sob demanda.
+
+- `GET /videos-clips?venueId=...`
+  - Retorna clipes de uma instalação com URL assinada curta (preview).
+
+### Clientes e instalações (`/api/clients`)
+
+- `POST /api/clients/` – Cria cliente.
+- `POST /api/clients/venue-installations/:clientId` – Cria instalação (quadra) para um cliente.
+
+### Quadras filiadas (`/api/quadras-filiadas`)
+
+- `GET /api/quadras-filiadas/` – Lista instalações ativas (uso operacional).
+
+### Notificações (`/notifications`)
+
+- `POST /notifications/contact` – Formulário de contato.
+- `POST /notifications/report` – Reporte de erro.
+
+### Perfil de usuário (`/users`)
+
+- `GET /users/:id` – Busca perfil (tabela `grn_auth.profiles`).
+- `PATCH /users/:id` – Atualiza campos mutáveis no perfil.
+
+---
+
+## Integração para parceiros (ingestão de clipes)
+
+### 1) Solicitar URL de upload
+
+Chame `POST /api/videos/metadados/client/:clientId/venue/:venueId` com os dados do clipe. A resposta retorna:
+
+- `clip_id`: identificador do clipe (chave natural do pipeline)
+- `storage_path`: caminho final no bucket
+- `upload_url`: URL assinada para PUT no S3
+
+O destino (`storage_path`) é derivado automaticamente do contrato configurado na instalação (`VenueInstallation.contractMethod`):
+
+- `monthly_subscription` → `main/clients/{clientId}/venues/{venueId}/{MM}/{DD}/{clip_id}.mp4`
+- `per_video` → `temp/{clientId}/{venueId}/{clip_id}.mp4`
+
+### 2) Fazer upload direto no S3
+
+Execute um HTTP PUT no `upload_url`. O backend não “proxyfaza” o arquivo.
+
+### 3) Finalizar upload
+
+Depois do PUT concluir, chame `POST /api/videos/:videoId/uploaded` para o backend:
+
+- Verificar existência e integridade via `HeadObject`.
+- Atualizar `videos.status` para `uploaded` (mensal) ou `uploaded_temp` (avulso).
+
+### 4) Consultar a biblioteca
+
+Use `GET /api/videos/list` com `venueId`. Quando precisar de URL de leitura, utilize `includeSignedUrl=true` (ou `GET /api/videos/sign` sob demanda).
+
+---
+
+## Observações operacionais
+
+- A listagem consulta o banco como fonte de verdade e valida no S3 item a item; itens sem objeto no bucket retornam `missing=true`.
+- Em produção, o serviço falha no startup se variáveis obrigatórias estiverem ausentes.
+- Logs incluem um `requestId` para rastreio ponta a ponta.
+

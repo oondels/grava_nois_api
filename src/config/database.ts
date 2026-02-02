@@ -5,6 +5,8 @@ import { Client } from "../models/Clients";
 import { VenueInstallation } from "../models/VenueInstallations";
 import { Payment } from "../models/Payments";
 import { Video } from "../models/Videos";
+import { User } from "../models/User";
+import { UserOauth } from "../models/UserOauth";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -13,9 +15,9 @@ export const AppDataSource = new DataSource({
   username: config.database.user,
   password: config.database.password,
   database: config.database.name,
-  synchronize: config.env === 'development', // Keep just in development mode
+  synchronize: false,
   logging: false,
-  entities: [Client, VenueInstallation, Payment, Video],
+  entities: [Client, VenueInstallation, Payment, Video, User, UserOauth],
   subscribers: [],
   migrations: [path.join(__dirname, '../migrations/*.{ts,js}')],
   migrationsTableName: "grava_nois_migrations",

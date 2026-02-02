@@ -2,6 +2,7 @@
 import { Router, type Request, type Response } from 'express'
 import { pool } from '../../config/pg'
 import type { PoolClient, QueryResult } from 'pg'
+import { logger } from '../../utils/logger'
 
 export const financeiroRouter = Router()
 
@@ -98,7 +99,7 @@ financeiroRouter.get('/', async (_req: Request, res: Response) => {
     res.json({ message: 'Lançamentos listados com sucesso', data })
   } catch (e) {
     try { await client.query('ROLLBACK') } catch {}
-    console.error('Falha inesperada ao listar financeiro:', e)
+    logger.error('felix3d-financeiro', `Falha inesperada ao listar financeiro: ${e}`)
     res.status(500).json({ message: 'Falha inesperada ao listar financeiro', details: String(e) })
   } finally {
     client.release()
@@ -114,7 +115,8 @@ financeiroRouter.post('/', async (req: Request<unknown, unknown, CreateFinanceir
     const body = req.body ?? {}
     if (!body.tipo || !body.item || body.valor == null || isNaN(Number(body.valor))) {
       await client.query('ROLLBACK')
-      return res.status(400).json({ message: 'Campos obrigatórios: tipo, item, valor' })
+      res.status(400).json({ message: 'Campos obrigatórios: tipo, item, valor' })
+      return
     }
 
     const data = body.data ?? null
@@ -136,7 +138,7 @@ financeiroRouter.post('/', async (req: Request<unknown, unknown, CreateFinanceir
     res.json({ message: 'Lançamento criado com sucesso', data: created })
   } catch (e) {
     try { await client.query('ROLLBACK') } catch {}
-    console.error('Falha inesperada ao criar lançamento:', e)
+    logger.error('felix3d-financeiro', `Falha inesperada ao criar lançamento: ${e}`)
     res.status(500).json({ message: 'Falha inesperada ao criar lançamento', details: String(e) })
   } finally {
     client.release()
@@ -158,7 +160,8 @@ financeiroRouter.put('/:id', async (req: Request<{ id: string }, unknown, Update
     )
     if (existing.rows.length === 0) {
       await client.query('ROLLBACK')
-      return res.status(404).json({ message: 'Lançamento não encontrado' })
+      res.status(404).json({ message: 'Lançamento não encontrado' })
+      return
     }
 
     const allowed = [
@@ -184,7 +187,8 @@ financeiroRouter.put('/:id', async (req: Request<{ id: string }, unknown, Update
 
     if (updateFields.length === 0) {
       await client.query('ROLLBACK')
-      return res.status(400).json({ message: 'Nenhum campo válido fornecido para atualização' })
+      res.status(400).json({ message: 'Nenhum campo válido fornecido para atualização' })
+      return
     }
 
     updateValues.push(id)
@@ -197,7 +201,7 @@ financeiroRouter.put('/:id', async (req: Request<{ id: string }, unknown, Update
     res.json({ message: 'Lançamento atualizado com sucesso', data: updated })
   } catch (e) {
     try { await client.query('ROLLBACK') } catch {}
-    console.error('Falha inesperada ao atualizar lançamento:', e)
+    logger.error('felix3d-financeiro', `Falha inesperada ao atualizar lançamento: ${e}`)
     res.status(500).json({ message: 'Falha inesperada ao atualizar lançamento', details: String(e) })
   } finally {
     client.release()
@@ -218,7 +222,8 @@ financeiroRouter.delete('/:id', async (req: Request<{ id: string }>, res: Respon
     )
     if (existing.rows.length === 0) {
       await client.query('ROLLBACK')
-      return res.status(404).json({ message: 'Lançamento não encontrado' })
+      res.status(404).json({ message: 'Lançamento não encontrado' })
+      return
     }
 
     const result: QueryResult<FinanceiroRow> = await client.query(
@@ -231,7 +236,7 @@ financeiroRouter.delete('/:id', async (req: Request<{ id: string }>, res: Respon
     res.json({ message: 'Lançamento removido com sucesso', data: removed })
   } catch (e) {
     try { await client.query('ROLLBACK') } catch {}
-    console.error('Falha inesperada ao deletar lançamento:', e)
+    logger.error('felix3d-financeiro', `Falha inesperada ao deletar lançamento: ${e}`)
     res.status(500).json({ message: 'Falha inesperada ao deletar lançamento', details: String(e) })
   } finally {
     client.release()
@@ -303,7 +308,7 @@ financeiroRouter.get('/dashboard', async (_req: Request, res: Response) => {
     })
   } catch (e) {
     try { await client.query('ROLLBACK') } catch {}
-    console.error('Falha ao calcular dashboard financeiro:', e)
+    logger.error('felix3d-financeiro', `Falha ao calcular dashboard financeiro: ${e}`)
     res.status(500).json({ message: 'Falha inesperada ao calcular dashboard financeiro', details: String(e) })
   } finally {
     client.release()

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { pool } from '../../config/pg'
+import { logger } from '../../utils/logger'
 
 const router = Router()
 
@@ -68,9 +69,9 @@ router.get('/', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-pedidos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao listar pedidos:', e)
+    logger.error('felix3d-pedidos', `Falha inesperada ao listar pedidos: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao listar pedidos', details: String(e) })
   } finally {
     client.release()
@@ -80,7 +81,7 @@ router.get('/', async (req: Request, res: Response) => {
 // Postar pedido
 router.post('/', async (req: Request, res: Response) => {
   const client = await pool.connect()
-  console.log('novo pedido')
+  logger.info('felix3d-pedidos', 'Criando novo pedido')
 
   try {
     await client.query('BEGIN')
@@ -156,9 +157,9 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-pedidos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao cadastrar pedido:', e)
+    logger.error('felix3d-pedidos', `Falha inesperada ao cadastrar pedido: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao cadastrar pedido', details: String(e) })
   } finally {
     client.release()
@@ -251,9 +252,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-pedidos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao atualizar pedido:', e)
+    logger.error('felix3d-pedidos', `Falha inesperada ao atualizar pedido: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao atualizar pedido', details: String(e) })
   } finally {
     client.release()
@@ -307,9 +308,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
     try {
       await client.query('ROLLBACK')
     } catch (rollbackError) {
-      console.error('Erro ao realizar rollback:', rollbackError)
+      logger.error('felix3d-pedidos', `Erro ao realizar rollback: ${rollbackError}`)
     }
-    console.error('Falha inesperada ao deletar pedido:', e)
+    logger.error('felix3d-pedidos', `Falha inesperada ao deletar pedido: ${e}`)
     return res.status(500).json({ message: 'Falha inesperada ao deletar pedido', details: String(e) })
   } finally {
     client.release()
