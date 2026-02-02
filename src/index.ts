@@ -13,6 +13,7 @@ import { authRouter } from "./routes/auth.route";
 import { notificationRouter } from "./routes/notification.route";
 import { clientRouter } from "./routes/client.route";
 import { quadrasRoute } from "./routes/quadras.filiadas";
+import { adminRouter } from "./routes/admin.route";
 
 import { errorHandler } from "./middlewares/errorHandler";
 
@@ -64,6 +65,7 @@ AppDataSource.initialize()
       app.use("/notifications", notificationRouter);
       app.use("/api/clients", clientRouter);
       app.use("/api/quadras-filiadas", quadrasRoute);
+      app.use("/admin", adminRouter);
 
       // Health check
       app.get("/", (req: Request, res: Response) => {
