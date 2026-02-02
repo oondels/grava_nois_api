@@ -18,12 +18,14 @@ export const validate = (schema: ZodSchema) => {
     if (!result.success) {
       const requestId = (res.locals as any).requestId;
       const errors = result.error.flatten();
+      const firstMessage = result.error.issues[0]?.message ?? "Erro de Validação dos dados enviados";
       
-      res.status(400).json({
+      // 422 Unprocessable Entity: request is well-formed but semantically invalid
+      res.status(422).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Dados inválidos fornecidos'
+          message: firstMessage
         },
         requestId,
         details: errors

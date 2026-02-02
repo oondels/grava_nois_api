@@ -73,7 +73,6 @@ export class UserController {
           success: true,
           message: "Nada para atualizar",
           user: toUserResponse(current),
-          data: toUserResponse(current),
           requestId: (res.locals as any).requestId,
         });
         return;
@@ -85,7 +84,6 @@ export class UserController {
         success: true,
         message: "Perfil atualizado com sucesso",
         user: toUserResponse(updated),
-        data: toUserResponse(updated),
         requestId: (res.locals as any).requestId,
       });
     } catch (error) {
@@ -106,11 +104,6 @@ export class UserController {
 
       const { cep, state, city, country } = req.body;
 
-      console.log('Localizancao sendo att');
-      
-      console.log(req.body);
-      
-
       const patch: any = {};
       if (cep !== undefined) patch.cep = cep;
       if (state !== undefined) patch.state = state;
@@ -123,7 +116,6 @@ export class UserController {
         success: true,
         message: "Localização do usuário atualizada com sucesso",
         user: toUserResponse(updated),
-        data: toUserResponse(updated),
         requestId: (res.locals as any).requestId,
       });
     } catch (error) {

@@ -62,10 +62,6 @@ export class AuthController {
   static async signUp(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { email, password, name } = req.body ?? {};
-      if (!email || !password || !name) {
-        res.status(400).json({ error: "missing_credentials", message: "Email, senha e nome são obrigatórios." });
-        return;
-      }
 
       const newUser = await authService.signUp(email, password, name);
 
@@ -98,9 +94,6 @@ export class AuthController {
 
   static async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const token = req.cookies.grn_access_token;
-      console.log(token);
-
       const isProd = config.env === 'production';
       res.clearCookie("grn_access_token", {
         httpOnly: true,

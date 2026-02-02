@@ -53,6 +53,8 @@ class AuthService {
   async signUp(email: string, password: string, name: string): Promise<Omit<User, 'password'>> {
     try {
       const existingUser = await this.UserDataSource.findOne({ where: { email } });
+      console.log(existingUser);
+      
       // usuário existe e é OAuth (password = null)
       if (existingUser && !existingUser.password) {
         throw new CustomError(
@@ -66,7 +68,6 @@ class AuthService {
         throw new CustomError("Email já cadastrado.", 409);
       }
 
-      // TODO: Validar força de senha
       const hashedPassword = await bcrypt.hash(password, config.bcrypt_salt_rounds);
 
       const newUser = this.UserDataSource.create({
@@ -297,36 +298,6 @@ class AuthService {
       throw new CustomError("Erro ao autenticar com Google", 500);
     }
   }
-
-  // async googleLogin(req: Request, res: Response) {
-  //   const supabase = makeSupabase(req, res);
-
-  //   // Usa BACKEND_PUBLIC_URL, com fallback dinâmico a partir do host atual
-  //   const dynamicBase = `${req.protocol}://${req.get("host")}`;
-  //   const base = config.backend_public_url || dynamicBase;
-  //   const url_callback = `${base}/auth/callback`;
-  //   const { data, error } = await supabase.auth.signInWithOAuth({
-  //     provider: "google",
-  //     options: {
-  //       redirectTo: url_callback, // backend callback
-  //       queryParams: { access_type: "offline", prompt: "consent" },
-  //     },
-  //   });
-
-  //   if (error) throw new CustomError(error.message, 401);
-
-  //   return data;
-  // }
-
-  // async googleCallback(req: Request, res: Response, code: string) {
-  //   const supabase = makeSupabase(req, res);
-
-  //   try {
-  //     await supabase.auth.exchangeCodeForSession(code);
-  //   } catch (error: any) {
-  //     throw new CustomError("Falha ao trocar código por sessão: " + error.message, 401);
-  //   }
-  // }
 }
 
 export const authService = new AuthService();
