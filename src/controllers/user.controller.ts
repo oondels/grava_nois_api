@@ -14,8 +14,6 @@ function toUserResponse(user: any) {
     role: user.role,
     emailVerified: user.emailVerified,
     isActive: user.isActive,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
     lastLoginAt: user.lastLoginAt,
     quadrasFiliadas: user.quadrasFiliadas,
     localization: {
@@ -33,6 +31,11 @@ export class UserController {
       const { id } = req.params;
       if (!id) {
         throw new CustomError("User ID é obrigatório", 400);
+      }
+
+      // Permite acesso apenas ao próprio usuário ou admin
+      if (req.user && req.user.id !== id && req.user.role !== "admin") {
+        throw new CustomError("Acesso negado! Você não tem permissão para acessar este perfil.", 403);
       }
 
       const user = await userService.getById(id);
