@@ -1,8 +1,17 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { VideoController } from "../controllers/video.controller";
 import { authenticateToken } from "../middlewares/auth.middleware";
 
 export const videoRouter = express.Router();
+
+const videoLimiter = rateLimit({
+	windowMs: 60 * 1000, // 1 minuto
+	max: 60, // 60 requisições por IP
+	message: { error: "too_many_requests" },
+	standardHeaders: true,
+	legacyHeaders: false,
+});
 
 /**
  * Recebe metadados do vídeo
@@ -34,7 +43,11 @@ export const videoRouter = express.Router();
  *  "expires_hint_hours": 12
  * }
  */
-videoRouter.post("/api/videos/metadados/client/:clientId/venue/:venueId", VideoController.createVideoMetadata);
+videoRouter.post(
+	"/api/videos/metadados/client/:clientId/venue/:venueId",
+	videoLimiter,
+	VideoController.createVideoMetadata
+);
 
 /**
  * POST /api/videos/:videoId/uploaded
@@ -57,7 +70,11 @@ videoRouter.post("/api/videos/metadados/client/:clientId/venue/:venueId", VideoC
  *   "status": "uploaded" | "uploaded_temp"
  * }
  */
-videoRouter.post("/api/videos/:videoId/uploaded", VideoController.finalizeVideoUpload);
+videoRouter.post(
+	"/api/videos/:videoId/uploaded",
+	videoLimiter,
+	VideoController.finalizeVideoUpload
+);
 
 /**
  * GET /api/videos/list
@@ -93,7 +110,12 @@ videoRouter.post("/api/videos/:videoId/uploaded", VideoController.finalizeVideoU
  *   nextToken: string | null
  * }
  */
-videoRouter.get("/api/videos/list", authenticateToken, VideoController.listVideos);
+videoRouter.get(
+	"/api/videos/list",
+	videoLimiter,
+	authenticateToken,
+	VideoController.listVideos
+);
 
 /**
  * GET /api/videos/sign
@@ -112,7 +134,12 @@ videoRouter.get("/api/videos/list", authenticateToken, VideoController.listVideo
  *   url: string | null
  * }
  */
-videoRouter.get("/api/videos/sign", authenticateToken, VideoController.signVideoUrl);
+videoRouter.get(
+	"/api/videos/sign",
+	videoLimiter,
+	authenticateToken,
+	VideoController.signVideoUrl
+);
 
 /**
  * GET /videos-clips
@@ -134,4 +161,9 @@ videoRouter.get("/api/videos/sign", authenticateToken, VideoController.signVideo
  *   }>
  * }
  */
-videoRouter.get("/videos-clips", authenticateToken, VideoController.getClipsByVenue);
+videoRouter.get(
+	"/videos-clips",
+	videoLimiter,
+	authenticateToken,
+	VideoController.getClipsByVenue
+);
