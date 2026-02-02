@@ -12,7 +12,7 @@ import { videoRouter } from "./routes/video.route";
 import { authRouter } from "./routes/auth.route";
 import { notificationRouter } from "./routes/notification.route";
 import { clientRouter } from "./routes/client.route";
-import { quadrasRoute } from "./routes/quadrasFiliadas";
+import { quadrasRoute } from "./routes/quadras.filiadas";
 
 import { errorHandler } from "./middlewares/errorHandler";
 
