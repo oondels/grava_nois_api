@@ -1,4 +1,4 @@
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { AppDataSource } from "../config/database";
 import { User } from "../models/User";
 import { CustomError } from "../types/CustomError";
@@ -8,6 +8,7 @@ import {
   PaymentStatus,
   VenueInstallation,
 } from "../models/VenueInstallations";
+import { Video, VideoStatus } from "../models/Videos";
 import {
   AdminUpdateClientInput,
   AdminUpdateUserInput,
@@ -39,11 +40,13 @@ class AdminService {
   private readonly userRepository: Repository<User>;
   private readonly clientRepository: Repository<Client>;
   private readonly venueRepository: Repository<VenueInstallation>;
+  private readonly videoRepository: Repository<Video>;
 
   constructor() {
     this.userRepository = AppDataSource.getRepository(User);
     this.clientRepository = AppDataSource.getRepository(Client);
     this.venueRepository = AppDataSource.getRepository(VenueInstallation);
+    this.videoRepository = AppDataSource.getRepository(Video);
   }
 
   private sanitizeUser(user: User): SafeUser {
@@ -223,6 +226,51 @@ class AdminService {
     }
 
     return qb.getMany();
+  }
+
+  async getDashboardStats() {
+    const [userCountsRaw, totalClients, venueCountsRaw, totalVideos] = await Promise.all([
+      this.userRepository
+        .createQueryBuilder("user")
+        .select("SUM(CASE WHEN user.isActive = true THEN 1 ELSE 0 END)", "active")
+        .addSelect("SUM(CASE WHEN user.isActive = false THEN 1 ELSE 0 END)", "inactive")
+        .getRawOne<{ active: string | null; inactive: string | null }>(),
+      this.clientRepository.count(),
+      this.venueRepository
+        .createQueryBuilder("venue")
+        .select("SUM(CASE WHEN venue.isOnline = true THEN 1 ELSE 0 END)", "online")
+        .addSelect("SUM(CASE WHEN venue.isOnline = false THEN 1 ELSE 0 END)", "offline")
+        .getRawOne<{ online: string | null; offline: string | null }>(),
+      this.videoRepository.count(),
+    ]);
+
+    const totalUsers = {
+      active: Number(userCountsRaw?.active ?? 0),
+      inactive: Number(userCountsRaw?.inactive ?? 0),
+    };
+
+    const totalVenues = {
+      online: Number(venueCountsRaw?.online ?? 0),
+      offline: Number(venueCountsRaw?.offline ?? 0),
+    };
+
+    return {
+      totalUsers,
+      totalClients,
+      totalVenues,
+      totalVideos,
+    };
+  }
+
+  async getRecentVideoErrors() {
+    return this.videoRepository.find({
+      where: {
+        status: In([VideoStatus.FAILED, VideoStatus.EXPIRED]),
+      },
+      order: { createdAt: "DESC" },
+      take: 50,
+      relations: ["client", "venue"],
+    });
   }
 }
 

@@ -106,6 +106,32 @@ export class AdminController {
       next(error);
     }
   }
+
+  async getDashboard(req: Request, res: Response, next: NextFunction) {
+    try {
+      const dashboard = await adminService.getDashboardStats();
+      res.status(200).json({
+        success: true,
+        data: dashboard,
+        requestId: (res.locals as any).requestId,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getRecentVideoErrors(req: Request, res: Response, next: NextFunction) {
+    try {
+      const videos = await adminService.getRecentVideoErrors();
+      res.status(200).json({
+        success: true,
+        data: videos,
+        requestId: (res.locals as any).requestId,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const adminController = new AdminController();

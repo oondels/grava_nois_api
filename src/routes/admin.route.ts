@@ -26,3 +26,10 @@ adminRouter.patch(
 );
 
 adminRouter.get("/venues", adminController.listVenues.bind(adminController));
+
+adminRouter.get("/dashboard", adminController.getDashboard.bind(adminController));
+
+adminRouter.get(
+  "/videos/recent-errors",
+  adminController.getRecentVideoErrors.bind(adminController)
+);
