@@ -2,7 +2,16 @@ import { Repository } from "typeorm";
 import { AppDataSource } from "../config/database";
 import { User } from "../models/User";
 import { CustomError } from "../types/CustomError";
-import { AdminUpdateUserInput } from "../validation/admin.schemas";
+import { Client } from "../models/Clients";
+import {
+  InstallationStatus,
+  PaymentStatus,
+  VenueInstallation,
+} from "../models/VenueInstallations";
+import {
+  AdminUpdateClientInput,
+  AdminUpdateUserInput,
+} from "../validation/admin.schemas";
 
 export type ListUsersParams = {
   page: number;
@@ -13,11 +22,28 @@ export type ListUsersParams = {
 
 export type SafeUser = Omit<User, "password">;
 
+type ListClientsParams = {
+  page: number;
+  limit: number;
+  search?: string;
+};
+
+type ListVenuesFilters = {
+  paymentStatus?: PaymentStatus;
+  installationStatus?: InstallationStatus;
+  isOnline?: boolean;
+  active?: boolean;
+};
+
 class AdminService {
   private readonly userRepository: Repository<User>;
+  private readonly clientRepository: Repository<Client>;
+  private readonly venueRepository: Repository<VenueInstallation>;
 
   constructor() {
     this.userRepository = AppDataSource.getRepository(User);
+    this.clientRepository = AppDataSource.getRepository(Client);
+    this.venueRepository = AppDataSource.getRepository(VenueInstallation);
   }
 
   private sanitizeUser(user: User): SafeUser {
@@ -78,6 +104,125 @@ class AdminService {
 
     const updated = await this.userRepository.save(user);
     return this.sanitizeUser(updated);
+  }
+
+  async listClients(params: ListClientsParams) {
+    const { page, limit, search } = params;
+    const qb = this.clientRepository
+      .createQueryBuilder("client")
+      .orderBy("client.createdAt", "DESC")
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (search) {
+      const normalizedSearch = `%${search.toLowerCase()}%`;
+      qb.andWhere(
+        "(LOWER(client.legalName) LIKE :search OR LOWER(client.tradeName) LIKE :search OR LOWER(client.responsibleName) LIKE :search)",
+        { search: normalizedSearch }
+      );
+    }
+
+    const [clients, total] = await qb.getManyAndCount();
+
+    if (!clients.length) {
+      return { clients: [], total };
+    }
+
+    const clientIds = clients.map((client) => client.id);
+
+    const stats = await this.venueRepository
+      .createQueryBuilder("venue")
+      .select("venue.clientId", "clientId")
+      .addSelect("COUNT(venue.id)", "venueCount")
+      .addSelect(
+        "SUM(CASE WHEN venue.paymentStatus = :pastDue THEN 1 ELSE 0 END)",
+        "pastDueCount"
+      )
+      .where("venue.clientId IN (:...clientIds)", { clientIds })
+      .groupBy("venue.clientId")
+      .setParameters({ pastDue: PaymentStatus.PAST_DUE })
+      .getRawMany();
+
+    const statsMap = new Map(
+      stats.map((row) => [row.clientId, { venueCount: Number(row.venueCount), pastDueCount: Number(row.pastDueCount) }])
+    );
+
+    const enrichedClients = clients.map((client) => {
+      const stat = statsMap.get(client.id);
+      const venueCount = stat?.venueCount ?? 0;
+      const hasPastDue = (stat?.pastDueCount ?? 0) > 0;
+
+      return {
+        ...client,
+        venueCount,
+        generalStatus: hasPastDue ? "attention" : "ok",
+      };
+    });
+
+    return {
+      clients: enrichedClients,
+      total,
+    };
+  }
+
+  async updateClient(clientId: string, patch: AdminUpdateClientInput) {
+    const client = await this.clientRepository.findOne({ where: { id: clientId } });
+
+    if (!client) {
+      throw new CustomError("Cliente não encontrado", 404);
+    }
+
+    if (patch.legalName !== undefined) {
+      client.legalName = patch.legalName;
+    }
+
+    if (patch.tradeName !== undefined) {
+      client.tradeName = patch.tradeName;
+    }
+
+    if (patch.responsibleName !== undefined) {
+      client.responsibleName = patch.responsibleName;
+    }
+
+    if (patch.responsibleEmail !== undefined) {
+      client.responsibleEmail = patch.responsibleEmail;
+    }
+
+    if (patch.responsiblePhone !== undefined) {
+      client.responsiblePhone = patch.responsiblePhone;
+    }
+
+    const updated = await this.clientRepository.save(client);
+    return updated;
+  }
+
+  async listVenues(filters: ListVenuesFilters) {
+    const qb = this.venueRepository
+      .createQueryBuilder("venue")
+      .leftJoinAndSelect("venue.client", "client")
+      .orderBy("venue.createdAt", "DESC");
+
+    if (filters.paymentStatus) {
+      qb.andWhere("venue.paymentStatus = :paymentStatus", {
+        paymentStatus: filters.paymentStatus,
+      });
+    }
+
+    if (filters.installationStatus) {
+      qb.andWhere("venue.installationStatus = :installationStatus", {
+        installationStatus: filters.installationStatus,
+      });
+    }
+
+    if (filters.isOnline !== undefined) {
+      qb.andWhere("venue.isOnline = :isOnline", { isOnline: filters.isOnline });
+    }
+
+    if (filters.active !== undefined) {
+      qb.andWhere("venue.active = :active", { active: filters.active });
+    }
+
+    return qb.getMany();
   }
 }
 

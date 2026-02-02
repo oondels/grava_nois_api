@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  InstallationStatus,
+  PaymentStatus,
+} from "../models/VenueInstallations";
 
 export const adminListUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -31,3 +35,53 @@ export const adminUpdateUserSchema = z
   );
 
 export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
+
+export const adminListClientsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().min(1).max(255).optional(),
+});
+
+export type AdminListClientsQuery = z.infer<typeof adminListClientsQuerySchema>;
+
+export const adminUpdateClientSchema = z
+  .object({
+    legalName: z.string().trim().min(1).max(255).optional(),
+    tradeName: z.union([z.string().trim().min(1).max(255), z.null()]).optional(),
+    responsibleName: z
+      .union([z.string().trim().min(1).max(255), z.null()])
+      .optional(),
+    responsibleEmail: z.union([z.string().trim().email(), z.null()]).optional(),
+    responsiblePhone: z
+      .union([z.string().trim().min(8).max(20), z.null()])
+      .optional(),
+  })
+  .refine(
+    (data) =>
+      data.legalName !== undefined ||
+      data.tradeName !== undefined ||
+      data.responsibleName !== undefined ||
+      data.responsibleEmail !== undefined ||
+      data.responsiblePhone !== undefined,
+    {
+      message: "Informe ao menos um campo para atualizar",
+      path: [],
+    }
+  );
+
+export type AdminUpdateClientInput = z.infer<typeof adminUpdateClientSchema>;
+
+export const adminListVenuesQuerySchema = z.object({
+  paymentStatus: z.nativeEnum(PaymentStatus).optional(),
+  installationStatus: z.nativeEnum(InstallationStatus).optional(),
+  isOnline: z.preprocess(
+    (val) => (val === undefined ? undefined : val === "true" || val === true),
+    z.boolean().optional()
+  ),
+  active: z.preprocess(
+    (val) => (val === undefined ? undefined : val === "true" || val === true),
+    z.boolean().optional()
+  ),
+});
+
+export type AdminListVenuesQuery = z.infer<typeof adminListVenuesQuerySchema>;

@@ -3,7 +3,7 @@ import { authenticateToken } from "../middlewares/auth.middleware";
 import { requireAdmin } from "../middlewares/admin.middleware";
 import { adminController } from "../controllers/admin.controller";
 import { validate } from "../middlewares/validate";
-import { adminUpdateUserSchema } from "../validation/admin.schemas";
+import { adminUpdateUserSchema, adminUpdateClientSchema } from "../validation/admin.schemas";
 
 export const adminRouter = Router();
 
@@ -16,3 +16,13 @@ adminRouter.patch(
   validate(adminUpdateUserSchema),
   adminController.updateUser.bind(adminController)
 );
+
+adminRouter.get("/clients", adminController.listClients.bind(adminController));
+
+adminRouter.patch(
+  "/clients/:id",
+  validate(adminUpdateClientSchema),
+  adminController.updateClient.bind(adminController)
+);
+
+adminRouter.get("/venues", adminController.listVenues.bind(adminController));

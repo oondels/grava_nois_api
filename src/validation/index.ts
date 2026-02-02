@@ -2,4 +2,10 @@ export { signInSchema, signUpSchema, updatePasswordSchema, requestPasswordResetS
 export { createClientSchema, createVenueInstallationSchema } from './client.schemas';
 export { createVideoMetadataSchema, getVideosByVenueSchema, getPresignedUrlSchema } from './video.schemas';
 export { updateUserSchema } from './user.schemas';
-export { adminListUsersQuerySchema, adminUpdateUserSchema } from './admin.schemas';
+export {
+  adminListUsersQuerySchema,
+  adminUpdateUserSchema,
+  adminListClientsQuerySchema,
+  adminUpdateClientSchema,
+  adminListVenuesQuerySchema,
+} from './admin.schemas';
