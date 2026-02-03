@@ -41,7 +41,10 @@ class VideoService {
     const videoRepository = AppDataSource.getRepository("Video");
 
     const clientRepository = AppDataSource.getRepository("Client");
-    const client = await clientRepository.findOne({ where: { id: data.client_id } });
+    const client = await clientRepository.findOne({
+      where: { id: data.client_id },
+      select: ["id", "retentionDays"],
+    });
 
     if (!client) {
       console.warn("Client not found:", data.client_id);
@@ -79,12 +82,20 @@ class VideoService {
 
     const capturedAtDate = new Date(data.captured_at);
 
+    const retentionDays = typeof (client as any).retentionDays === "number"
+      ? (client as any).retentionDays
+      : 3;
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + retentionDays);
+
     // Cria registro `clips`
     const clip = {
       clipId: clip_id,
       clientId: data.client_id,
       venueId: data.venue_id,
       capturedAt: capturedAtDate,
+      expiresAt,
       contract: contractType,
       sha256: data.sha256,
       status: "queued",

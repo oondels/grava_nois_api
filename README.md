@@ -276,6 +276,23 @@ O servidor adiciona `X-Request-Id` na resposta (gerado ou reaproveitado do heade
 - `GET /users/:id` – Busca perfil (tabela `grn_auth.profiles`).
 - `PATCH /users/:id` – Atualiza campos mutáveis no perfil.
 
+### Admin (`/admin`)
+
+- `GET /admin/users` – Lista usuários com paginação, busca e filtro por role.
+- `PATCH /admin/users/:id` – Atualiza `isActive`, `role`, `name`, `username`.
+- `GET /admin/clients` – Lista clientes com paginação e busca.
+- `PATCH /admin/clients/:id` – Atualiza dados básicos do cliente.
+- `GET /admin/venues` – Lista instalações com filtros operacionais.
+- `GET /admin/dashboard` – Consolida métricas de usuários, clientes, instalações e vídeos.
+- `GET /admin/videos/recent-errors` – Lista vídeos com status `FAILED` ou `EXPIRED`.
+
+Admin (middlewares, controllers e services):
+- Middlewares aplicados na rota: `authenticateToken` + `requireAdmin` em `src/routes/admin.route.ts`.
+- Middleware `requireAdmin` valida `req.user.role === "admin"` e bloqueia acesso sem autenticação (`src/middlewares/admin.middleware.ts`).
+- `PATCH /admin/users/:id` e `PATCH /admin/clients/:id` usam `validate` com schemas Zod (`src/middlewares/validate.ts`, `src/validation/admin.schemas.ts`).
+- `src/controllers/admin.controller.ts` coordena validação de query/body e respostas HTTP.
+- `src/services/admin.service.ts` concentra as consultas e regras (usuários, clientes, instalações, vídeos).
+
 ---
 
 ## Integração para parceiros (ingestão de clipes)
@@ -315,4 +332,3 @@ Use `GET /api/videos/list` com `venueId`. Quando precisar de URL de leitura, uti
 - A listagem consulta o banco como fonte de verdade e valida no S3 item a item; itens sem objeto no bucket retornam `missing=true`.
 - Em produção, o serviço falha no startup se variáveis obrigatórias estiverem ausentes.
 - Logs incluem um `requestId` para rastreio ponta a ponta.
-

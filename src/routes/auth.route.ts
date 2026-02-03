@@ -21,6 +21,8 @@ authRouter.post("/sign-up", authLimiter, validate(signUpSchema), AuthController.
 
 authRouter.post("/sign-out", AuthController.signOut)
 
+authRouter.post("/refresh", AuthController.refresh)
+
 authRouter.post("/google", authLimiter, validate(googleSignInSchema), AuthController.googleLogin)
 
 authRouter.get("/me", authenticateToken, AuthController.authMe)

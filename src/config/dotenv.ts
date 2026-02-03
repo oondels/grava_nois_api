@@ -27,6 +27,9 @@ const REQUIRED_ENV_VARS: string[] = [
 // Variáveis opcionais com valores padrão
 const OPTIONAL_ENV_VARS: Record<string, string> = {
   'BCRYPT_SALT_ROUNDS': '12',
+  'REDIS_HOST': 'localhost',
+  'REDIS_PORT': '6379',
+  'REDIS_PASS': '',
 };
 
 // Em produção, exige também DB e RabbitMQ
@@ -76,7 +79,7 @@ export const config = {
   backend_public_url: process.env.BACKEND_PUBLIC_URL || '',
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
   jwt_secret: process.env.JWT_SECRET || 'default_secret',
-  jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
+  jwt_expires_in: process.env.JWT_EXPIRES_IN || '15m',
   bcrypt_salt_rounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
   google_client_id: process.env.GOOGLE_CLIENT_ID || '',
   cookie_max_age: parseInt(process.env.COOKIE_MAX_AGE || String(1000 * 60 * 60), 10), // 1 hora
@@ -84,5 +87,10 @@ export const config = {
   aws_access_key_id: process.env.AWS_ACCESS_KEY_ID || '',
   aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY || '',
   aws_region: process.env.AWS_REGION || 'sa-east-1',
-  s3_bucket_name: process.env.S3_BUCKET_NAME || ''
+  s3_bucket_name: process.env.S3_BUCKET_NAME || '',
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASS || ''
+  }
 }

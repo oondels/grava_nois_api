@@ -53,6 +53,7 @@ export class ClientService {
         responsiblePhone: data.responsiblePhone,
         cnpj: data.cnpj,
         responsibleCpf: data.responsibleCpf,
+        retentionDays: data.retentionDays,
       });
 
       await this.clientRepository.save(newClient);

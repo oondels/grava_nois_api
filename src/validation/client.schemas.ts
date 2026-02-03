@@ -8,6 +8,7 @@ export const createClientSchema = z.object({
   responsiblePhone: z.string().optional(),
   cnpj: z.string().optional(),
   responsibleCpf: z.string().optional(),
+  retentionDays: z.number().int().positive().default(3),
 }).refine(
   (data) => data.cnpj || data.responsibleCpf,
   {
