@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { userService } from "../services/user.service";
 import { CustomError } from "../types/CustomError";
 
@@ -25,13 +26,18 @@ function toUserResponse(user: any) {
   };
 }
 
+const idParamSchema = z.object({
+  id: z.string().min(1),
+});
+
 export class UserController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.params;
-      if (!id) {
+      const paramsParsed = idParamSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
         throw new CustomError("User ID é obrigatório", 400);
       }
+      const { id } = paramsParsed.data;
 
       // Permite acesso apenas ao próprio usuário ou admin
       if (req.user && req.user.id !== id && req.user.role !== "admin") {
@@ -53,10 +59,11 @@ export class UserController {
 
   async updateById(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.params;
-      if (!id) {
+      const paramsParsed = idParamSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
         throw new CustomError("User ID é obrigatório", 400);
       }
+      const { id } = paramsParsed.data;
 
       if (!req.user || req.user.id !== id) {
         throw new CustomError("Acesso negado", 403);
@@ -96,10 +103,11 @@ export class UserController {
 
   async updateUserLocation(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.params;
-      if (!id) {
+      const paramsParsed = idParamSchema.safeParse(req.params);
+      if (!paramsParsed.success) {
         throw new CustomError("User ID é obrigatório", 400);
       }
+      const { id } = paramsParsed.data;
 
       if (!req.user || req.user.id !== id) {
         throw new CustomError("Acesso negado", 403);
