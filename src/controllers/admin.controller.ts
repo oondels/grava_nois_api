@@ -7,7 +7,14 @@ import {
   AdminUpdateUserInput,
   AdminUpdateClientInput,
 } from "../validation/admin.schemas";
-import { CustomError } from "../types/CustomError";
+import { z } from "zod";
+
+const idParamSchema = z.object({
+  id: z.preprocess(
+    (value) => (Array.isArray(value) ? value[0] : value),
+    z.string().min(1, "ID é obrigatório")
+  ),
+});
 
 export class AdminController {
   async listUsers(req: Request, res: Response, next: NextFunction) {
@@ -32,10 +39,7 @@ export class AdminController {
 
   async updateUser(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.params;
-      if (!id) {
-        throw new CustomError("User ID é obrigatório", 400);
-      }
+      const { id } = idParamSchema.parse(req.params);
 
       const payload = req.body as AdminUpdateUserInput;
       const updatedUser = await adminService.updateUser(id, payload);
@@ -73,10 +77,7 @@ export class AdminController {
 
   async updateClient(req: Request, res: Response, next: NextFunction) {
     try {
-      const { id } = req.params;
-      if (!id) {
-        throw new CustomError("Client ID é obrigatório", 400);
-      }
+      const { id } = idParamSchema.parse(req.params);
 
       const payload = req.body as AdminUpdateClientInput;
       const updatedClient = await adminService.updateClient(id, payload);
