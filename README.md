@@ -1,6 +1,6 @@
 # Grava Nóis API
 
-Backend da plataforma Grava Nóis para captura, organização e entrega de replays esportivos. Este serviço expõe endpoints para autenticação, gestão de clientes/instalações (quadras), ingestão de clipes (upload direto no S3 via URL assinada), consulta de biblioteca e notificações operacionais.
+Backend da plataforma Grava Nóis para captura, organização e entrega de replays esportivos. Este serviço expõe endpoints para autenticação, gestão de clientes/instalações (quadras), ingestão de clipes com upload direto no S3 via URL assinada, consulta de biblioteca e notificações operacionais.
 
 Este README é voltado para:
 - Pessoas desenvolvedoras (onboarding e operação do serviço)
@@ -26,7 +26,7 @@ Em alto nível, o sistema funciona assim:
 
 ---
 
-## Arquitetura
+## Arquitetura e stack
 
 Pontos principais:
 
@@ -36,6 +36,7 @@ Pontos principais:
 - **JWT** para autenticação (cookie HTTP-only e suporte a `Authorization: Bearer`) (`src/middlewares/auth.middleware.ts`).
 - **Login Google** via validação de **Google ID Token** (`google-auth-library`) (`src/services/auth.service.ts`).
 - **SMTP/Nodemailer** para contato e reporte de erro (`src/services/notification/*`).
+- **Redis** para refresh tokens (conexão obrigatória no startup) (`src/config/redis.ts`).
 - **RabbitMQ** preparado para fan-out de eventos (ex.: pipeline de processamento), com conexão em `src/rabbitmq`.
 
 ### Organização do código
@@ -61,6 +62,7 @@ src/
 
 - Node.js 20+
 - PostgreSQL 14+
+- Redis
 - Bucket S3 + credenciais (upload/download)
 - SMTP para envio de e-mails (contato e reporte)
 - (Opcional) RabbitMQ para integração com pipeline assíncrono
@@ -83,6 +85,7 @@ As variáveis abaixo são validadas no startup (falha rápida).
 | `PORT` | não | Porta HTTP do Express (padrão: `3000`). |
 | `BACKEND_PUBLIC_URL` | sim | Base pública do backend (útil para compor URLs em integrações). |
 | `COOKIE_SAME_SITE` | sim | Política SameSite padrão do serviço (ex.: `lax`, `none`). |
+| `COOKIE_MAX_AGE` | não | Tempo de vida do cookie (ms). Padrão 1h. |
 | `JWT_SECRET` | sim | Segredo de assinatura do JWT. |
 | `JWT_EXPIRES_IN` | sim | Expiração do JWT (ex.: `1h`). |
 | `BCRYPT_SALT_ROUNDS` | não | Rounds do bcrypt (padrão: `12`). |
@@ -100,6 +103,14 @@ Em produção, estas variáveis passam a ser obrigatórias:
 | `DB_USER` | sim | Usuário do banco. |
 | `DB_PASSWORD` | sim | Senha do banco. |
 | `DB_NAME` | sim | Nome do banco. |
+
+### Redis
+
+| Variável | Obrigatória | Descrição |
+| --- | --- | --- |
+| `REDIS_HOST` | não | Host do Redis (padrão: `localhost`). |
+| `REDIS_PORT` | não | Porta do Redis (padrão: `6379`). |
+| `REDIS_PASS` | não | Senha do Redis (se aplicável). |
 
 ### AWS S3
 
@@ -124,14 +135,6 @@ Em produção, estas variáveis passam a ser obrigatórias:
 | --- | --- | --- |
 | `RABBITMQ_URL` | sim | URI do broker. |
 
-### Perfil de usuário (consulta)
-
-O endpoint `/users/:id` consulta dados em `grn_auth.profiles` via conexão SQL direta. Para usar esse endpoint, defina:
-
-| Variável | Obrigatória | Descrição |
-| --- | --- | --- |
-| `SUPABASE_DATABASE` | depende do uso | Connection string para a base que contém `grn_auth.profiles`. |
-
 ---
 
 ## Banco de dados e migrations
@@ -154,7 +157,7 @@ Comandos principais:
 ### Local (desenvolvimento)
 
 1. Crie `.env` com as variáveis necessárias.
-2. Garanta acesso ao PostgreSQL e ao bucket S3.
+2. Garanta acesso ao PostgreSQL, Redis e ao bucket S3.
 3. Rode migrations: `npm run migration:run`
 4. Suba a API: `npm run dev`
 
@@ -182,6 +185,10 @@ O serviço emite um JWT e grava em cookie HTTP-only `grn_access_token`. Rotas pr
 - Header `Authorization: Bearer <token>`
 
 O middleware normaliza o payload para `req.user = { id, email, role }`.
+
+### Refresh token
+
+O endpoint de refresh usa Redis para armazenar tokens de renovação com TTL. O tempo padrão do refresh token é 5 dias.
 
 ### Login com Google
 
@@ -217,81 +224,119 @@ O servidor adiciona `X-Request-Id` na resposta (gerado ou reaproveitado do heade
 
 ---
 
-## Endpoints (resumo)
+## Endpoints (detalhados)
+
+> **Auth**: indica se o endpoint exige JWT. Rotas `/admin` exigem `role=admin`.
 
 ### Health
 
-- `GET /` – Health check.
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| GET | `/` | não | Health check do serviço. |
 
 ### Auth (`/auth`)
 
-- `POST /auth/sign-in` – Login com email/senha.
-- `POST /auth/sign-up` – Registro com email/senha.
-- `POST /auth/sign-out` – Logout (limpa cookies).
-- `POST /auth/google` – Login com Google (via ID token).
-- `GET /auth/me` – Retorna o usuário autenticado (requer JWT).
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| POST | `/auth/sign-in` | não | Login com email/senha. |
+| POST | `/auth/sign-up` | não | Registro com email/senha. |
+| POST | `/auth/sign-out` | não | Logout (limpa cookies). |
+| POST | `/auth/refresh` | não | Renova sessão com refresh token. |
+| POST | `/auth/google` | não | Login com Google (ID token). |
+| GET | `/auth/me` | sim | Retorna o usuário autenticado. |
+
+### Usuários (`/users`)
+
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| GET | `/users/:id` | sim | Busca perfil do próprio usuário ou admin. |
+| PATCH | `/users/:id` | sim | Atualiza dados básicos do perfil. |
+| PATCH | `/users/:id/location` | sim | Atualiza localização (cep, state, city, country). |
 
 ### Vídeos
 
-- `POST /api/videos/metadados/client/:clientId/venue/:venueId`
-  - Cria registro do clipe e retorna `upload_url` (S3 PUT).
-  - Body mínimo validado hoje:
-    - `venue_id` (UUID)
-    - `captured_at` (string)
-    - `sha256` (hex SHA-256)
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| POST | `/api/videos/metadados/client/:clientId/venue/:venueId` | não | Cria registro do clipe e retorna `upload_url` (S3 PUT). |
+| POST | `/api/videos/:videoId/uploaded` | não | Finaliza upload, valida S3 e atualiza status. |
+| GET | `/api/videos/list` | sim | Lista clipes por `venueId` (paginado) e pode incluir URL assinada. |
+| GET | `/api/videos/sign` | sim | Gera URL assinada para preview/download. |
+| GET | `/videos-clips` | sim | Lista clipes de uma instalação com URL assinada curta. |
 
-- `POST /api/videos/:videoId/uploaded`
-  - Valida o objeto no S3 (tamanho e ETag opcional) e atualiza status.
-  - Body:
-    - `size_bytes` (number)
-    - `sha256` (hex SHA-256)
-    - `etag` (opcional)
+#### POST `/api/videos/metadados/client/:clientId/venue/:venueId`
 
-- `GET /api/videos/list?venueId=...&limit=...&token=...&includeSignedUrl=...&ttl=...`
-  - Lista clipes a partir do banco (ordenado por `capturedAt DESC`).
-  - Opcionalmente inclui URL assinada de leitura por item.
+Body esperado:
+- `venue_id` (UUID)
+- `duration_sec` (number)
+- `captured_at` (timestamp/string)
+- `meta` (object)
+- `sha256` (hex SHA-256)
 
-- `GET /api/videos/sign?path=...&kind=preview|download&ttl=...`
-  - Gera URL assinada de leitura sob demanda.
+Retorno:
+- `clip_id`, `contract_type`, `storage_path`, `upload_url`, `expires_hint_hours`
 
-- `GET /videos-clips?venueId=...`
-  - Retorna clipes de uma instalação com URL assinada curta (preview).
+#### POST `/api/videos/:videoId/uploaded`
+
+Body esperado:
+- `size_bytes` (number)
+- `sha256` (hex SHA-256)
+- `etag` (opcional)
+
+Retorno:
+- `clip_id`, `contract_type`, `storage_path`, `status`
+
+#### GET `/api/videos/list`
+
+Query:
+- `venueId` (string)
+- `limit` (1..100)
+- `token` (paginação)
+- `includeSignedUrl` (boolean)
+- `ttl` (60..86400)
+
+#### GET `/api/videos/sign`
+
+Query:
+- `path` (string)
+- `kind` (`preview` | `download`)
+- `ttl` (60..86400)
+
+#### GET `/videos-clips`
+
+Query:
+- `venueId` (string)
 
 ### Clientes e instalações (`/api/clients`)
 
-- `POST /api/clients/` – Cria cliente.
-- `POST /api/clients/venue-installations/:clientId` – Cria instalação (quadra) para um cliente.
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| POST | `/api/clients/` | não | Cria cliente. |
+| POST | `/api/clients/venue-installations/:clientId` | não | Cria instalação (quadra) para um cliente. |
 
 ### Quadras filiadas (`/api/quadras-filiadas`)
 
-- `GET /api/quadras-filiadas/` – Lista instalações ativas (uso operacional).
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| GET | `/api/quadras-filiadas/` | não | Lista quadras com filtros (estado/cidade/país/ativo/CEP). |
 
 ### Notificações (`/notifications`)
 
-- `POST /notifications/contact` – Formulário de contato.
-- `POST /notifications/report` – Reporte de erro.
-
-### Perfil de usuário (`/users`)
-
-- `GET /users/:id` – Busca perfil (tabela `grn_auth.profiles`).
-- `PATCH /users/:id` – Atualiza campos mutáveis no perfil.
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| POST | `/notifications/contact` | não | Formulário de contato. |
+| POST | `/notifications/report` | não | Reporte de erro. |
 
 ### Admin (`/admin`)
 
-- `GET /admin/users` – Lista usuários com paginação, busca e filtro por role.
-- `PATCH /admin/users/:id` – Atualiza `isActive`, `role`, `name`, `username`.
-- `GET /admin/clients` – Lista clientes com paginação e busca.
-- `PATCH /admin/clients/:id` – Atualiza dados básicos do cliente.
-- `GET /admin/venues` – Lista instalações com filtros operacionais.
-- `GET /admin/dashboard` – Consolida métricas de usuários, clientes, instalações e vídeos.
-- `GET /admin/videos/recent-errors` – Lista vídeos com status `FAILED` ou `EXPIRED`.
-
-Admin (middlewares, controllers e services):
-- Middlewares aplicados na rota: `authenticateToken` + `requireAdmin` em `src/routes/admin.route.ts`.
-- Middleware `requireAdmin` valida `req.user.role === "admin"` e bloqueia acesso sem autenticação (`src/middlewares/admin.middleware.ts`).
-- `PATCH /admin/users/:id` e `PATCH /admin/clients/:id` usam `validate` com schemas Zod (`src/middlewares/validate.ts`, `src/validation/admin.schemas.ts`).
-- `src/controllers/admin.controller.ts` coordena validação de query/body e respostas HTTP.
-- `src/services/admin.service.ts` concentra as consultas e regras (usuários, clientes, instalações, vídeos).
+| Método | Rota | Auth | Descrição |
+| --- | --- | --- | --- |
+| GET | `/admin/users` | sim (admin) | Lista usuários (paginação, busca, role). |
+| PATCH | `/admin/users/:id` | sim (admin) | Atualiza usuário (isActive, role, name, username). |
+| GET | `/admin/clients` | sim (admin) | Lista clientes (paginação e busca). |
+| PATCH | `/admin/clients/:id` | sim (admin) | Atualiza dados básicos do cliente. |
+| GET | `/admin/venues` | sim (admin) | Lista instalações com filtros operacionais. |
+| GET | `/admin/dashboard` | sim (admin) | Consolida métricas de usuários, clientes, instalações e vídeos. |
+| GET | `/admin/videos/recent-errors` | sim (admin) | Lista vídeos com status `FAILED` ou `EXPIRED`. |
 
 ---
 
@@ -332,3 +377,22 @@ Use `GET /api/videos/list` com `venueId`. Quando precisar de URL de leitura, uti
 - A listagem consulta o banco como fonte de verdade e valida no S3 item a item; itens sem objeto no bucket retornam `missing=true`.
 - Em produção, o serviço falha no startup se variáveis obrigatórias estiverem ausentes.
 - Logs incluem um `requestId` para rastreio ponta a ponta.
+
+---
+
+## Versionamento (híbrido)
+
+Modelo híbrido adotado:
+
+- **SemVer** para compatibilidade de APIs: `MAJOR.MINOR.PATCH`.
+- **Data de release** registrada no changelog (formato `YYYY-MM-DD`).
+
+Versão atual: **1.1.0** (2026-02-03).
+
+Regras práticas:
+
+- **MAJOR**: quebra de contrato público (rotas, payloads, autenticação).
+- **MINOR**: novas rotas/funcionalidades compatíveis.
+- **PATCH**: correções e melhorias internas sem mudança de contrato.
+
+Changelog completo em CHANGELOG.md.
