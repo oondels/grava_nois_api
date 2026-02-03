@@ -6,6 +6,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { randomUUID } from "crypto";
 import helmet from "helmet";
+import cron from "node-cron";
 
 import { userRouter } from "./routes/user.route";
 import { videoRouter } from "./routes/video.route";
@@ -14,8 +15,10 @@ import { notificationRouter } from "./routes/notification.route";
 import { clientRouter } from "./routes/client.route";
 import { quadrasRoute } from "./routes/quadras.filiadas";
 import { adminRouter } from "./routes/admin.route";
+import { VideoCleanupService } from "./services/videoCleanup.service";
 
 import { errorHandler } from "./middlewares/errorHandler";
+import { logger } from "./utils/logger";
 
 export const ALLOWED_ORIGINS = new Set([
   "https://www.gravanois.com.br",
@@ -87,6 +90,11 @@ AppDataSource.initialize()
 
       // Global error handler - must be last
       app.use(errorHandler);
+
+      cron.schedule("0 4 * * *", () => {
+        void VideoCleanupService.processExpiredVideos();
+      });
+      logger.info("video-cleanup", "Agendamento do cleanup iniciado: 04:00 daily.");
 
       const port = process.env.PORT || 3000;
       app.listen(port, () => {
