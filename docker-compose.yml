@@ -10,3 +10,9 @@ services:
       - NODE_ENV=production
     restart:
       on-failure
+    networks:
+      - hendrius_network
+
+networks:
+  hendrius_network:
+    external: true
