@@ -79,7 +79,7 @@ export const config = {
   backend_public_url: process.env.BACKEND_PUBLIC_URL || '',
   cookie_same_site: process.env.COOKIE_SAME_SITE || 'lax',
   jwt_secret: process.env.JWT_SECRET || 'default_secret',
-  jwt_expires_in: process.env.JWT_EXPIRES_IN || '1h',
+  jwt_expires_in: process.env.JWT_EXPIRES_IN || '15m',
   bcrypt_salt_rounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
   google_client_id: process.env.GOOGLE_CLIENT_ID || '',
   cookie_max_age: parseInt(process.env.COOKIE_MAX_AGE || String(1000 * 60 * 60), 10), // 1 hora

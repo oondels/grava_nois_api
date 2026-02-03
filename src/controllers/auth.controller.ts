@@ -213,7 +213,22 @@ export class AuthController {
     try {
       const refreshToken = req.cookies?.grn_refresh_token;
       if (!refreshToken) {
-        throw new CustomError("Refresh token ausente", 401);
+        const isProd = config.env === 'production';
+        res.clearCookie("grn_access_token", {
+          httpOnly: true,
+          secure: isProd,
+          sameSite: isProd ? 'none' : 'lax',
+          path: "/",
+        });
+
+        res.clearCookie("grn_refresh_token", {
+          httpOnly: true,
+          secure: isProd,
+          sameSite: isProd ? 'none' : 'lax',
+          path: "/auth/refresh"
+        });
+        res.status(401).json({ message: "Acesso negado! Refresh token ausente. Faça login novamente." });
+        return;
       }
 
       const { userId, refreshToken: newRefreshToken } = await authService.refreshToken(refreshToken);
