@@ -7,11 +7,14 @@ import { randomUUID } from "crypto";
 import { Repository } from "typeorm";
 import bcrypt from "bcrypt";
 import { OAuth2Client } from "google-auth-library";
+import { redisClient } from "../config/redis";
 
 class AuthService {
   private readonly UserDataSource: Repository<User>;
   private readonly UserOauthDataSource: Repository<UserOauth>;
   private readonly googleClient: OAuth2Client;
+  private readonly refreshTokenTtlSeconds = 432000;
+  private readonly refreshTokenPrefix = "rt:";
 
   constructor() {
     this.UserDataSource = AppDataSource.getRepository(User);
@@ -296,6 +299,49 @@ class AuthService {
 
       console.error("Google login error:", error);
       throw new CustomError("Erro ao autenticar com Google", 500);
+    }
+  }
+
+  async generateRefreshToken(userId: string): Promise<string> {
+    try {
+      const token = randomUUID();
+      const key = `${this.refreshTokenPrefix}${token}`;
+
+      await redisClient.set(key, userId, { EX: this.refreshTokenTtlSeconds });
+      return token;
+    } catch (error) {
+      throw new CustomError("Erro ao gerar refresh token", 500);
+    }
+  }
+
+  async refreshToken(token: string): Promise<{ userId: string; refreshToken: string }> {
+    try {
+      const key = `${this.refreshTokenPrefix}${token}`;
+      const userId = await redisClient.get(key);
+
+      if (!userId) {
+        throw new CustomError("Refresh token inválido", 401);
+      }
+
+      const newToken = randomUUID();
+      const newKey = `${this.refreshTokenPrefix}${newToken}`;
+
+      await redisClient.set(newKey, userId, { EX: this.refreshTokenTtlSeconds });
+      await redisClient.del(key);
+
+      return { userId, refreshToken: newToken };
+    } catch (error) {
+      if (error instanceof CustomError) throw error;
+      throw new CustomError("Erro ao validar refresh token", 500);
+    }
+  }
+
+  async signOut(token: string): Promise<void> {
+    try {
+      const key = `${this.refreshTokenPrefix}${token}`;
+      await redisClient.del(key);
+    } catch (error) {
+      throw new CustomError("Erro ao invalidar refresh token", 500);
     }
   }
 }

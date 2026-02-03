@@ -24,6 +24,19 @@ function setAuthToken(res: Response, token: string) {
 
 }
 
+function setRefreshToken(res: Response, token: string) {
+  const isProd = config.env === "production";
+  const fiveDaysMs = 432000 * 1000;
+
+  res.cookie("grn_refresh_token", token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    path: "/auth/refresh",
+    maxAge: fiveDaysMs,
+  });
+}
+
 export class AuthController {
 
   static async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -42,7 +55,10 @@ export class AuthController {
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
       )
 
+      const refreshToken = await authService.generateRefreshToken(user.id);
+
       setAuthToken(res, token);
+      setRefreshToken(res, refreshToken);
       res.status(200).json({
         user: {
           email: user.email,
@@ -75,7 +91,10 @@ export class AuthController {
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
       )
 
+      const refreshToken = await authService.generateRefreshToken(newUser.id);
+
       setAuthToken(res, token);
+      setRefreshToken(res, refreshToken);
       res.status(201).json({
         status: 201,
         message: "Usuário registrado com sucesso! Verifique seu email para ativar a conta.",
@@ -94,6 +113,11 @@ export class AuthController {
 
   static async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const refreshToken = req.cookies?.grn_refresh_token;
+      if (refreshToken) {
+        await authService.signOut(refreshToken);
+      }
+
       const isProd = config.env === 'production';
       res.clearCookie("grn_access_token", {
         httpOnly: true,
@@ -106,7 +130,7 @@ export class AuthController {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? 'none' : 'lax',
-        path: "/"
+        path: "/auth/refresh"
       });
 
       res.status(204).end();
@@ -163,7 +187,10 @@ export class AuthController {
       );
 
       // Set cookie (same pattern as signIn/signUp)
+      const refreshToken = await authService.generateRefreshToken(user.id);
+
       setAuthToken(res, token);
+      setRefreshToken(res, refreshToken);
       res.status(200).json({
         user: {
           email: user.email,
@@ -175,6 +202,40 @@ export class AuthController {
         },
         status: 200,
         message: "Login com Google realizado com sucesso!"
+      });
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const refreshToken = req.cookies?.grn_refresh_token;
+      if (!refreshToken) {
+        throw new CustomError("Refresh token ausente", 401);
+      }
+
+      const { userId, refreshToken: newRefreshToken } = await authService.refreshToken(refreshToken);
+      const user = await authService.getUser(userId);
+
+      const token = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role
+        },
+        config.jwt_secret as jwt.Secret,
+        { expiresIn: config.jwt_expires_in } as jwt.SignOptions
+      );
+
+      setAuthToken(res, token);
+      setRefreshToken(res, newRefreshToken);
+
+      res.status(200).json({
+        accessToken: token,
+        status: 200,
+        message: "Token renovado com sucesso."
       });
       return;
     } catch (error) {
