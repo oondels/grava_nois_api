@@ -109,6 +109,38 @@ class AuthService {
     }
   }
 
+  async changePassword(email: string, currentPassword: string, newPassword: string): Promise<void> {
+    try {
+      const user = await this.UserDataSource.findOne({ where: { email } });
+
+      if (!user) {
+        throw new CustomError("Usuário não encontrado.", 404);
+      }
+
+      if (!user.password) {
+        throw new CustomError("Esta conta deve ser acessada via login social (ex: Google).", 400);
+      }
+
+      if (user.isActive === false) {
+        throw new CustomError("Usuário inativo.", 403);
+      }
+
+      const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!passwordMatch) {
+        throw new CustomError("Senha atual inválida.", 401);
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, config.bcrypt_salt_rounds);
+      user.password = hashedPassword;
+      user.updatedAt = new Date();
+      await this.UserDataSource.save(user);
+    } catch (error) {
+      if (error instanceof CustomError) throw error;
+
+      throw new CustomError("Erro ao alterar senha", 500);
+    }
+  }
+
   async getUser(id: string) {
     try {
       const user = await this.UserDataSource.findOne({

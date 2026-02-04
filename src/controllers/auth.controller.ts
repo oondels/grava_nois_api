@@ -3,7 +3,6 @@ import { authService } from "../services/auth.service"
 import { config } from "../config/dotenv";
 import { CustomError } from "../types/CustomError";
 import jwt from 'jsonwebtoken';
-import { signInSchema } from "../validation/auth.schemas";
 import { UserRole } from "../models/User";
 
 function setAuthToken(res: Response, token: string) {
@@ -150,6 +149,22 @@ export class AuthController {
       return
     } catch (error) {
       next(error)
+    }
+  }
+
+  static async changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { email, currentPassword, newPassword } = req.body ?? {};
+
+      await authService.changePassword(email, currentPassword, newPassword);
+
+      res.status(200).json({
+        status: 200,
+        message: "Senha alterada com sucesso."
+      });
+      return;
+    } catch (error) {
+      next(error);
     }
   }
 

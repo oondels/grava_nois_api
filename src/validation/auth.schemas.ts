@@ -20,6 +20,7 @@ export const googleSignInSchema = z.object({
 });
 
 export const updatePasswordSchema = z.object({
+  email: z.string().email("Email inválido"),
   currentPassword: z.string().min(1, "Senha atual é obrigatória"),
   newPassword: z.string()
     .min(8, "Nova senha deve ter pelo menos 8 caracteres")
