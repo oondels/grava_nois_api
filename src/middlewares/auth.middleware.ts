@@ -10,6 +10,7 @@ export interface DecodedToken {
   id: string;
   email: string;
   role?: UserRole;
+  clientId?: string;
 }
 
 const isUserRole = (value: unknown): value is UserRole =>
@@ -51,7 +52,12 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
     const normalizedId = String((payload as any).userId ?? (payload as any).id ?? "");
     const normalizedEmail = String((payload as any).email ?? "");
     const rawRole = (payload as any).role;
+    const rawClientId = (payload as any).clientId ?? (payload as any).client_id;
     const normalizedRole = isUserRole(rawRole) ? rawRole : undefined;
+    const normalizedClientId =
+      typeof rawClientId === "string" && rawClientId.trim().length > 0
+        ? rawClientId
+        : undefined;
 
     if (!normalizedId || !normalizedEmail) {
       res.status(401).json({ message: "Token inválido." });
@@ -62,6 +68,7 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
       id: normalizedId,
       email: normalizedEmail,
       role: normalizedRole,
+      clientId: normalizedClientId,
     };
     next();
   });

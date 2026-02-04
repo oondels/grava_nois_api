@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { clientService } from "../services/client.service";
 import { venueInstallationService } from "../services/venueInstallation.service";
-import { logger } from "../utils/logger";
+import { CustomError } from "../types/CustomError";
+import { UpdateClientDto } from "../validation/client.schemas";
 
 export class ClientController {
   async createClient(req: Request, res: Response, next: NextFunction) {
@@ -48,6 +49,46 @@ export class ClientController {
       res.status(201).json({
         success: true,
         data: newVenue,
+        requestId: (res.locals as any).requestId,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getMe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const clientId = req.user?.clientId;
+      if (!clientId) {
+        throw new CustomError("Forbidden - User is not a client", 403);
+      }
+
+      const client = await clientService.getMe(clientId);
+
+      res.status(200).json({
+        success: true,
+        data: client,
+        requestId: (res.locals as any).requestId,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateMe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const clientId = req.user?.clientId;
+      if (!clientId) {
+        throw new CustomError("Forbidden - User is not a client", 403);
+      }
+
+      const payload = req.body as UpdateClientDto;
+      const updated = await clientService.updateMe(clientId, payload);
+
+      res.status(200).json({
+        success: true,
+        message: "Cliente atualizado com sucesso",
+        data: updated,
         requestId: (res.locals as any).requestId,
       });
     } catch (error) {

@@ -2,7 +2,7 @@ import { Repository } from "typeorm";
 import { AppDataSource } from "../config/database";
 import { Client } from "../models/Clients";
 import { CustomError } from "../types/CustomError";
-import { CreateClientInput } from "../validation/client.schemas";
+import { CreateClientInput, UpdateClientDto } from "../validation/client.schemas";
 import { logger } from "../utils/logger";
 
 export class ClientService {
@@ -10,6 +10,20 @@ export class ClientService {
 
   constructor() {
     this.clientRepository = AppDataSource.getRepository(Client);
+  }
+
+  private toClientView(client: Client) {
+    return {
+      id: client.id,
+      legalName: client.legalName,
+      tradeName: client.tradeName,
+      responsibleName: client.responsibleName,
+      responsibleEmail: client.responsibleEmail,
+      responsiblePhone: client.responsiblePhone,
+      retentionDays: client.retentionDays,
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+    };
   }
 
   async createClient(data: CreateClientInput) {
@@ -80,6 +94,32 @@ export class ClientService {
     }
 
     return client;
+  }
+
+  async getMe(clientId: string) {
+    const client = await this.getClientById(clientId);
+    return this.toClientView(client);
+  }
+
+  async updateMe(clientId: string, data: UpdateClientDto) {
+    const client = await this.getClientById(clientId);
+
+    if (data.tradeName !== undefined) {
+      client.tradeName = data.tradeName;
+    }
+    if (data.responsibleName !== undefined) {
+      client.responsibleName = data.responsibleName;
+    }
+    if (data.responsibleEmail !== undefined) {
+      client.responsibleEmail = data.responsibleEmail;
+    }
+    if (data.responsiblePhone !== undefined) {
+      client.responsiblePhone = data.responsiblePhone;
+    }
+
+    const updated = await this.clientRepository.save(client);
+    logger.info("client-service", `Client updated by client: ${clientId}`);
+    return this.toClientView(updated);
   }
 }
 
