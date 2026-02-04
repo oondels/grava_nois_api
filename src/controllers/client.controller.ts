@@ -95,6 +95,25 @@ export class ClientController {
       next(error);
     }
   }
+
+  async getStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const clientId = req.user?.clientId;
+      if (!clientId) {
+        throw new CustomError("Forbidden - User is not a client", 403);
+      }
+
+      const stats = await clientService.getClientStats(clientId);
+
+      res.status(200).json({
+        success: true,
+        data: stats,
+        requestId: (res.locals as any).requestId,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const clientController = new ClientController();

@@ -1,15 +1,21 @@
 import { Repository } from "typeorm";
 import { AppDataSource } from "../config/database";
 import { Client } from "../models/Clients";
+import { Video } from "../models/Videos";
+import { VenueInstallation } from "../models/VenueInstallations";
 import { CustomError } from "../types/CustomError";
 import { CreateClientInput, UpdateClientDto } from "../validation/client.schemas";
 import { logger } from "../utils/logger";
 
 export class ClientService {
   private clientRepository: Repository<Client>;
+  private videoRepository: Repository<Video>;
+  private venueRepository: Repository<VenueInstallation>;
 
   constructor() {
     this.clientRepository = AppDataSource.getRepository(Client);
+    this.videoRepository = AppDataSource.getRepository(Video);
+    this.venueRepository = AppDataSource.getRepository(VenueInstallation);
   }
 
   private toClientView(client: Client) {
@@ -120,6 +126,52 @@ export class ClientService {
     const updated = await this.clientRepository.save(client);
     logger.info("client-service", `Client updated by client: ${clientId}`);
     return this.toClientView(updated);
+  }
+
+  async getClientStats(clientId: string) {
+    const totalVideosPromise = this.videoRepository
+      .createQueryBuilder("video")
+      .innerJoin("video.venue", "venue", "venue.clientId = :clientId", { clientId })
+      .getCount();
+
+    const storageUsedPromise = this.videoRepository
+      .createQueryBuilder("video")
+      .innerJoin("video.venue", "venue", "venue.clientId = :clientId", { clientId })
+      .select("COALESCE(SUM(video.sizeBytes), 0)", "storageUsed")
+      .getRawOne<{ storageUsed: string | null }>();
+
+    const activeVenuesPromise = this.venueRepository
+      .createQueryBuilder("venue")
+      .where("venue.clientId = :clientId", { clientId })
+      .andWhere("venue.active = true")
+      .getCount();
+
+    // TODO: Corrigir contagem de usuarios vinculados ao cliente
+    // const linkedUsersPromise = AppDataSource.createQueryBuilder()
+    //   .select("COUNT(DISTINCT u.id)", "totalLinkedUsers")
+    //   .from("auth.grn_users", "u")
+    //   .innerJoin(
+    //     "LATERAL jsonb_array_elements_text(COALESCE(u.quadras_filiadas, '[]'::jsonb)) q(value)",
+    //     "q",
+    //     "true"
+    //   )
+    //   .innerJoin(VenueInstallation, "venue", "venue.id = q.value::uuid")
+    //   .where("venue.clientId = :clientId", { clientId })
+    //   .getRawOne<{ totalLinkedUsers: string | null }>();
+
+    const [totalVideos, storageUsedRaw, activeVenues] = await Promise.all([
+      totalVideosPromise,
+      storageUsedPromise,
+      activeVenuesPromise,
+      // linkedUsersPromise,
+    ]);
+
+    return {
+      totalVideos,
+      totalLinkedUsers: 0,
+      storageUsed: Number(storageUsedRaw?.storageUsed ?? 0),
+      activeVenues,
+    };
   }
 }
 

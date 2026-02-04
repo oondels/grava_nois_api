@@ -23,6 +23,13 @@ router.patch(
   clientController.updateMe.bind(clientController)
 );
 
+router.get(
+  "/me/stats",
+  authenticateToken,
+  requireClient,
+  clientController.getStats.bind(clientController)
+);
+
 // Criar novo cliente
 router.post(
   "/",
