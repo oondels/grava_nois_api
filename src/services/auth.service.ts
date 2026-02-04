@@ -1,6 +1,7 @@
 import { CustomError } from "../types/CustomError";
 import { config } from "../config/dotenv";
 import { User, UserRole } from "../models/User";
+import { Client } from "../models/Clients";
 import { UserOauth } from "../models/UserOauth";
 import { AppDataSource } from "../config/database";
 import { randomUUID } from "crypto";
@@ -12,6 +13,7 @@ import { redisClient } from "../config/redis";
 class AuthService {
   private readonly UserDataSource: Repository<User>;
   private readonly UserOauthDataSource: Repository<UserOauth>;
+  private readonly ClientDataSource: Repository<Client>;
   private readonly googleClient: OAuth2Client;
   private readonly refreshTokenTtlSeconds = 432000;
   private readonly refreshTokenPrefix = "rt:";
@@ -19,7 +21,17 @@ class AuthService {
   constructor() {
     this.UserDataSource = AppDataSource.getRepository(User);
     this.UserOauthDataSource = AppDataSource.getRepository(UserOauth);
+    this.ClientDataSource = AppDataSource.getRepository(Client);
     this.googleClient = new OAuth2Client(config.google_client_id);
+  }
+
+  async getClientIdForUser(userId: string): Promise<string | undefined> {
+    const client = await this.ClientDataSource.findOne({
+      where: { userId },
+      select: ["id"],
+    });
+
+    return client?.id;
   }
 
   async signIn(email: string, password: string): Promise<Omit<User, 'password'>> {

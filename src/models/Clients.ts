@@ -2,14 +2,22 @@ import 'reflect-metadata';
 import {
   Entity, PrimaryGeneratedColumn, Column, Index,
   CreateDateColumn, UpdateDateColumn, DeleteDateColumn,
-  ManyToOne, JoinColumn
+  OneToOne, JoinColumn
 } from 'typeorm';
+import { User } from './User';
 
 @Entity({ schema: 'grn_clients', name: 'clients' })
 @Index(['cnpj'], { unique: true, where: '"cnpj" IS NOT NULL' })
 export class Client {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ type: 'uuid', name: 'user_id', nullable: true, unique: true })
+  userId?: string | null;
+
+  @OneToOne(() => User, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'user_id' })
+  user?: User | null;
 
   @Column({ type: 'varchar', length: 255 })
   legalName!: string; // Razão social ou nome
