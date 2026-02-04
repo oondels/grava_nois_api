@@ -30,6 +30,20 @@ router.get(
   clientController.getStats.bind(clientController)
 );
 
+router.get(
+  "/me/invoices",
+  authenticateToken,
+  requireClient,
+  clientController.getInvoices.bind(clientController)
+);
+
+router.get(
+  "/me/subscription-status",
+  authenticateToken,
+  requireClient,
+  clientController.getSubscriptionStatus.bind(clientController)
+);
+
 // Criar novo cliente
 router.post(
   "/",

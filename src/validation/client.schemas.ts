@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaymentProvider, PaymentStatus } from "../models/Payments";
 
 export const createClientSchema = z.object({
   legalName: z.string().min(1, "Nome/Razão Social é obrigatório"),
@@ -52,6 +53,22 @@ export const updateClientSchema = z
     }
   );
 
+export const clientInvoicesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.nativeEnum(PaymentStatus).optional(),
+  provider: z.nativeEnum(PaymentProvider).optional(),
+  from: z.preprocess(
+    (value) => (value ? new Date(String(value)) : undefined),
+    z.date().optional()
+  ),
+  to: z.preprocess(
+    (value) => (value ? new Date(String(value)) : undefined),
+    z.date().optional()
+  ),
+});
+
 export type CreateClientInput = z.infer<typeof createClientSchema>;
 export type CreateVenueInstallationInput = z.infer<typeof createVenueInstallationSchema>;
 export type UpdateClientDto = z.infer<typeof updateClientSchema>;
+export type ClientInvoicesQuery = z.infer<typeof clientInvoicesQuerySchema>;

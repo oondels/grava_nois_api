@@ -6,6 +6,13 @@ import {
 } from 'typeorm';
 import { User } from './User';
 
+export enum SubscriptionStatus {
+  ACTIVE = 'active',
+  PENDING = 'pending',
+  PAST_DUE = 'past_due',
+  CANCELED = 'canceled',
+}
+
 @Entity({ schema: 'grn_clients', name: 'clients' })
 @Index(['cnpj'], { unique: true, where: '"cnpj" IS NOT NULL' })
 export class Client {
@@ -50,6 +57,14 @@ export class Client {
     comment: 'Tempo em dias para manter os vídeos hospedados no S3'
   })
   retentionDays!: number;
+
+  @Column({
+    type: 'enum',
+    enum: SubscriptionStatus,
+    enumName: 'grn_client_subscription_status_enum',
+    default: SubscriptionStatus.PENDING,
+  })
+  subscriptionStatus!: SubscriptionStatus;
 
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAt!: Date;

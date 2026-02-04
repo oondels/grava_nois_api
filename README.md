@@ -310,8 +310,32 @@ Query:
 
 | Método | Rota | Auth | Descrição |
 | --- | --- | --- | --- |
+| GET | `/api/clients/me` | sim (client) | Retorna o perfil do cliente autenticado. |
+| PATCH | `/api/clients/me` | sim (client) | Atualiza dados básicos do cliente autenticado. |
+| GET | `/api/clients/me/stats` | sim (client) | Retorna métricas do cliente autenticado. |
+| GET | `/api/clients/me/invoices` | sim (client) | Lista histórico de cobranças (paginado e filtrável). |
+| GET | `/api/clients/me/subscription-status` | sim (client) | Retorna o status da assinatura do cliente. |
 | POST | `/api/clients/` | não | Cria cliente. |
 | POST | `/api/clients/venue-installations/:clientId` | não | Cria instalação (quadra) para um cliente. |
+
+#### GET `/api/clients/me/invoices`
+
+Query:
+- `page` (1..n)
+- `limit` (1..100)
+- `status` (`pending` | `paid` | `failed` | `refunded` | `partially_refunded` | `canceled`)
+- `provider` (`stripe` | `mercado_pago` | `abacate_pay` | `manual`)
+- `from` (data/ISO)
+- `to` (data/ISO)
+
+Retorno:
+- `items[]` com `chargedAt`, `amount`, `status`, `paidAt`, `dueAt`, `provider`, `method`, `description`.
+- `total`, `page`, `limit`.
+
+#### GET `/api/clients/me/subscription-status`
+
+Retorno:
+- `subscriptionStatus` (`active` | `pending` | `past_due` | `canceled`).
 
 ### Quadras filiadas (`/api/quadras-filiadas`)
 

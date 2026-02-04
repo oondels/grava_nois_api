@@ -1,21 +1,24 @@
 import { Repository } from "typeorm";
 import { AppDataSource } from "../config/database";
 import { Client } from "../models/Clients";
+import { Payment } from "../models/Payments";
 import { Video } from "../models/Videos";
 import { VenueInstallation } from "../models/VenueInstallations";
 import { CustomError } from "../types/CustomError";
-import { CreateClientInput, UpdateClientDto } from "../validation/client.schemas";
+import { ClientInvoicesQuery, CreateClientInput, UpdateClientDto } from "../validation/client.schemas";
 import { logger } from "../utils/logger";
 
 export class ClientService {
   private clientRepository: Repository<Client>;
   private videoRepository: Repository<Video>;
   private venueRepository: Repository<VenueInstallation>;
+  private paymentRepository: Repository<Payment>;
 
   constructor() {
     this.clientRepository = AppDataSource.getRepository(Client);
     this.videoRepository = AppDataSource.getRepository(Video);
     this.venueRepository = AppDataSource.getRepository(VenueInstallation);
+    this.paymentRepository = AppDataSource.getRepository(Payment);
   }
 
   private toClientView(client: Client) {
@@ -27,6 +30,7 @@ export class ClientService {
       responsibleEmail: client.responsibleEmail,
       responsiblePhone: client.responsiblePhone,
       retentionDays: client.retentionDays,
+      subscriptionStatus: client.subscriptionStatus,
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     };
@@ -172,6 +176,59 @@ export class ClientService {
       storageUsed: Number(storageUsedRaw?.storageUsed ?? 0),
       activeVenues,
     };
+  }
+
+  async getInvoices(clientId: string, query: ClientInvoicesQuery) {
+    const { page, limit, status, provider, from, to } = query;
+
+    const qb = this.paymentRepository
+      .createQueryBuilder("payment")
+      .where("payment.clientId = :clientId", { clientId })
+      .orderBy("payment.createdAt", "DESC")
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (status) {
+      qb.andWhere("payment.status = :status", { status });
+    }
+
+    if (provider) {
+      qb.andWhere("payment.provider = :provider", { provider });
+    }
+
+    if (from) {
+      qb.andWhere("payment.createdAt >= :from", { from });
+    }
+
+    if (to) {
+      qb.andWhere("payment.createdAt <= :to", { to });
+    }
+
+    const [payments, total] = await qb.getManyAndCount();
+
+    return {
+      items: payments.map((payment) => ({
+      id: payment.id,
+      chargedAt: payment.createdAt,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+      paidAt: payment.paidAt,
+      dueAt: payment.dueAt,
+      provider: payment.provider,
+      method: payment.method,
+      description: payment.description,
+      providerPaymentId: payment.providerPaymentId,
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getSubscriptionStatus(clientId: string) {
+    const client = await this.getClientById(clientId);
+    return { subscriptionStatus: client.subscriptionStatus };
   }
 }
 

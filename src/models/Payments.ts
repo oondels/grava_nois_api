@@ -16,7 +16,8 @@ import { Client } from './Clients';
 export enum PaymentProvider {
   STRIPE = 'stripe',
   MERCADO_PAGO = 'mercado_pago',
-  MANUAL = 'manual', // bank transfer, cash, etc.
+  ABACATE_PAY = 'abacate_pay',
+  MANUAL = 'manual',
 }
 
 export enum PaymentMethod {
