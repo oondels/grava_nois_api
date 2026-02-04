@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { userService } from "../services/user.service";
+import { UserRole } from "../models/User";
 import { CustomError } from "../types/CustomError";
 
 function toUserResponse(user: any) {
@@ -40,7 +41,7 @@ export class UserController {
       const { id } = paramsParsed.data;
 
       // Permite acesso apenas ao próprio usuário ou admin
-      if (req.user && req.user.id !== id && req.user.role !== "admin") {
+      if (req.user && req.user.id !== id && req.user.role !== UserRole.Admin) {
         throw new CustomError("Acesso negado! Você não tem permissão para acessar este perfil.", 403);
       }
 

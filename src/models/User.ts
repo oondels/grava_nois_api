@@ -10,6 +10,12 @@ import { UserOauth } from "./UserOauth";
 
 export type OauthProvider = "google" | "apple" | "github";
 
+export enum UserRole {
+  Common = "common",
+  Admin = "admin",
+  Client = "client",
+}
+
 @Entity({ name: "grn_users", schema: "auth" })
 export class User {
   @PrimaryGeneratedColumn("uuid")
@@ -60,8 +66,13 @@ export class User {
   @Column({ type: "timestamp", name: "last_login_at", nullable: true })
   lastLoginAt!: Date | null;
 
-  @Column({ type: "varchar", length: 32, default: "common" })
-  role!: string;
+  @Column({
+    type: "enum",
+    enum: UserRole,
+    enumName: "grn_user_role_enum",
+    default: UserRole.Common,
+  })
+  role!: UserRole;
 
   @Column({
     type: "varchar",

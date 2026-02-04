@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { CustomError } from "../types/CustomError";
+import { UserRole } from "../models/User";
 
 /**
  * Middleware para verificar se o usuário é administrador
@@ -15,7 +16,7 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   }
 
   // Verifica se o role é 'admin'
-  if (req.user.role !== "admin") {
+  if (req.user.role !== UserRole.Admin) {
     throw new CustomError("Acesso negado! Você não tem permissão de administrador.", 403);
   }
 

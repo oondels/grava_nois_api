@@ -1,6 +1,6 @@
 import { In, Repository } from "typeorm";
 import { AppDataSource } from "../config/database";
-import { User } from "../models/User";
+import { User, UserRole } from "../models/User";
 import { CustomError } from "../types/CustomError";
 import { Client } from "../models/Clients";
 import {
@@ -18,7 +18,7 @@ export type ListUsersParams = {
   page: number;
   limit: number;
   search?: string;
-  role?: string;
+  role?: UserRole;
 };
 
 export type SafeUser = Omit<User, "password">;

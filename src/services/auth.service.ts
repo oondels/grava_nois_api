@@ -1,6 +1,6 @@
 import { CustomError } from "../types/CustomError";
 import { config } from "../config/dotenv";
-import { User } from "../models/User";
+import { User, UserRole } from "../models/User";
 import { UserOauth } from "../models/UserOauth";
 import { AppDataSource } from "../config/database";
 import { randomUUID } from "crypto";
@@ -78,7 +78,7 @@ class AuthService {
         password: hashedPassword,
         name: name,
         emailVerified: false,
-        role: "common",
+        role: UserRole.Common,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -264,7 +264,7 @@ class AuthService {
           name: resolvedName,
           avatarUrl: picture || null,
           emailVerified: true,
-          role: "common",
+          role: UserRole.Common,
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
