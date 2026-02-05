@@ -46,7 +46,7 @@ export const contactFormSchema = z.object({
 
 
 export type BugReportPayload = {
-  name: string;
+  name?: string;
   email?: string;
   page: string;
   title?: string;
@@ -57,8 +57,8 @@ export type BugReportPayload = {
   url?: string;
 };
 export const bugReportSchema = z.object({
-  name: z.string().min(1, "Nome é obrigatório"),
-  email: z.string().email("Email inválido").optional(),
+  name: z.string().min(1, "Nome é obrigatório").optional(),
+  email: z.string().optional(),
   page: z.string().min(1, "Página é obrigatória"),
   title: z.string().optional(),
   description: z.string().min(1, "Descrição é obrigatória"),
