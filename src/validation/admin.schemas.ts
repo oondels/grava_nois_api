@@ -3,12 +3,13 @@ import {
   InstallationStatus,
   PaymentStatus,
 } from "../models/VenueInstallations";
+import { UserRole } from "../models/User";
 
 export const adminListUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().trim().min(1).max(255).optional(),
-  role: z.string().trim().min(1).max(32).optional(),
+  role: z.nativeEnum(UserRole).optional(),
 });
 
 export type AdminListUsersQuery = z.infer<typeof adminListUsersQuerySchema>;
@@ -16,7 +17,7 @@ export type AdminListUsersQuery = z.infer<typeof adminListUsersQuerySchema>;
 export const adminUpdateUserSchema = z
   .object({
     isActive: z.boolean().optional(),
-    role: z.string().trim().min(1).max(32).optional(),
+    role: z.nativeEnum(UserRole).optional(),
     name: z.string().trim().min(1).max(255).optional(),
     username: z
       .union([z.string().trim().min(3).max(64), z.null()])

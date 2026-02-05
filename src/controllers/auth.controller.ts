@@ -3,7 +3,7 @@ import { authService } from "../services/auth.service"
 import { config } from "../config/dotenv";
 import { CustomError } from "../types/CustomError";
 import jwt from 'jsonwebtoken';
-import { signInSchema } from "../validation/auth.schemas";
+import { UserRole } from "../models/User";
 
 function setAuthToken(res: Response, token: string) {
   const decoded = jwt.decode(token) as jwt.JwtPayload | null;
@@ -37,6 +37,14 @@ function setRefreshToken(res: Response, token: string) {
   });
 }
 
+async function resolveClientIdIfNeeded(user: { id: string; role?: UserRole }) {
+  if (user.role !== UserRole.Client) {
+    return undefined;
+  }
+
+  return authService.getClientIdForUser(user.id);
+}
+
 export class AuthController {
 
   static async signIn(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -44,12 +52,14 @@ export class AuthController {
       // Validação feita pelo middleware validate()
       const { email, password } = req.body;
       const user = await authService.signIn(email, password);
+      const clientId = await resolveClientIdIfNeeded(user);
 
       const token = jwt.sign(
         {
           userId: user.id,
           email: user.email,
-          role: user.role
+          role: user.role,
+          ...(clientId ? { clientId } : {}),
         },
         config.jwt_secret as jwt.Secret,
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
@@ -80,12 +90,14 @@ export class AuthController {
       const { email, password, name } = req.body ?? {};
 
       const newUser = await authService.signUp(email, password, name);
+      const clientId = await resolveClientIdIfNeeded(newUser);
 
       const token = jwt.sign(
         {
           userId: newUser.id,
           email: newUser.email,
-          role: newUser.role
+          role: newUser.role,
+          ...(clientId ? { clientId } : {}),
         },
         config.jwt_secret as jwt.Secret,
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
@@ -140,6 +152,22 @@ export class AuthController {
     }
   }
 
+  static async changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { email, currentPassword, newPassword } = req.body ?? {};
+
+      await authService.changePassword(email, currentPassword, newPassword);
+
+      res.status(200).json({
+        status: 200,
+        message: "Senha alterada com sucesso."
+      });
+      return;
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async authMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = req.user;
@@ -174,13 +202,15 @@ export class AuthController {
 
       // Authenticate with Google
       const user = await authService.googleLogin(idToken);
+      const clientId = await resolveClientIdIfNeeded(user);
 
       // Generate JWT token (same pattern as signIn/signUp)
       const token = jwt.sign(
         {
           userId: user.id,
           email: user.email,
-          role: user.role
+          role: user.role,
+          ...(clientId ? { clientId } : {}),
         },
         config.jwt_secret as jwt.Secret,
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions
@@ -233,12 +263,14 @@ export class AuthController {
 
       const { userId, refreshToken: newRefreshToken } = await authService.refreshToken(refreshToken);
       const user = await authService.getUser(userId);
+      const clientId = await resolveClientIdIfNeeded(user);
 
       const token = jwt.sign(
         {
           userId: user.id,
           email: user.email,
-          role: user.role
+          role: user.role,
+          ...(clientId ? { clientId } : {}),
         },
         config.jwt_secret as jwt.Secret,
         { expiresIn: config.jwt_expires_in } as jwt.SignOptions

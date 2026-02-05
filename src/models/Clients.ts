@@ -2,14 +2,29 @@ import 'reflect-metadata';
 import {
   Entity, PrimaryGeneratedColumn, Column, Index,
   CreateDateColumn, UpdateDateColumn, DeleteDateColumn,
-  ManyToOne, JoinColumn
+  OneToOne, JoinColumn
 } from 'typeorm';
+import { User } from './User';
+
+export enum SubscriptionStatus {
+  ACTIVE = 'active',
+  PENDING = 'pending',
+  PAST_DUE = 'past_due',
+  CANCELED = 'canceled',
+}
 
 @Entity({ schema: 'grn_clients', name: 'clients' })
 @Index(['cnpj'], { unique: true, where: '"cnpj" IS NOT NULL' })
 export class Client {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ type: 'uuid', name: 'user_id', nullable: true, unique: true })
+  userId?: string | null;
+
+  @OneToOne(() => User, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'user_id' })
+  user?: User | null;
 
   @Column({ type: 'varchar', length: 255 })
   legalName!: string; // Razão social ou nome
@@ -42,6 +57,14 @@ export class Client {
     comment: 'Tempo em dias para manter os vídeos hospedados no S3'
   })
   retentionDays!: number;
+
+  @Column({
+    type: 'enum',
+    enum: SubscriptionStatus,
+    enumName: 'grn_client_subscription_status_enum',
+    default: SubscriptionStatus.PENDING,
+  })
+  subscriptionStatus!: SubscriptionStatus;
 
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAt!: Date;

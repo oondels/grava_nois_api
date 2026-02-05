@@ -1,6 +1,7 @@
 import { CustomError } from "../types/CustomError";
 import { config } from "../config/dotenv";
-import { User } from "../models/User";
+import { User, UserRole } from "../models/User";
+import { Client } from "../models/Clients";
 import { UserOauth } from "../models/UserOauth";
 import { AppDataSource } from "../config/database";
 import { randomUUID } from "crypto";
@@ -12,6 +13,7 @@ import { redisClient } from "../config/redis";
 class AuthService {
   private readonly UserDataSource: Repository<User>;
   private readonly UserOauthDataSource: Repository<UserOauth>;
+  private readonly ClientDataSource: Repository<Client>;
   private readonly googleClient: OAuth2Client;
   private readonly refreshTokenTtlSeconds = 432000;
   private readonly refreshTokenPrefix = "rt:";
@@ -19,7 +21,17 @@ class AuthService {
   constructor() {
     this.UserDataSource = AppDataSource.getRepository(User);
     this.UserOauthDataSource = AppDataSource.getRepository(UserOauth);
+    this.ClientDataSource = AppDataSource.getRepository(Client);
     this.googleClient = new OAuth2Client(config.google_client_id);
+  }
+
+  async getClientIdForUser(userId: string): Promise<string | undefined> {
+    const client = await this.ClientDataSource.findOne({
+      where: { userId },
+      select: ["id"],
+    });
+
+    return client?.id;
   }
 
   async signIn(email: string, password: string): Promise<Omit<User, 'password'>> {
@@ -78,7 +90,7 @@ class AuthService {
         password: hashedPassword,
         name: name,
         emailVerified: false,
-        role: "common",
+        role: UserRole.Common,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -94,6 +106,38 @@ class AuthService {
       if (error instanceof CustomError) throw error;
 
       throw new CustomError("Erro desconhecido ao registrar usuário", 500);
+    }
+  }
+
+  async changePassword(email: string, currentPassword: string, newPassword: string): Promise<void> {
+    try {
+      const user = await this.UserDataSource.findOne({ where: { email } });
+
+      if (!user) {
+        throw new CustomError("Usuário não encontrado.", 404);
+      }
+
+      if (!user.password) {
+        throw new CustomError("Esta conta deve ser acessada via login social (ex: Google).", 400);
+      }
+
+      if (user.isActive === false) {
+        throw new CustomError("Usuário inativo.", 403);
+      }
+
+      const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!passwordMatch) {
+        throw new CustomError("Senha atual inválida.", 401);
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, config.bcrypt_salt_rounds);
+      user.password = hashedPassword;
+      user.updatedAt = new Date();
+      await this.UserDataSource.save(user);
+    } catch (error) {
+      if (error instanceof CustomError) throw error;
+
+      throw new CustomError("Erro ao alterar senha", 500);
     }
   }
 
@@ -264,7 +308,7 @@ class AuthService {
           name: resolvedName,
           avatarUrl: picture || null,
           emailVerified: true,
-          role: "common",
+          role: UserRole.Common,
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
