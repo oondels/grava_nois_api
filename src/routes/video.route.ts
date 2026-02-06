@@ -2,6 +2,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { VideoController } from "../controllers/video.controller";
 import { authenticateToken } from "../middlewares/auth.middleware";
+import { allowOnlyBusinessWindow } from "../middlewares/requestTimeWindow.middleware";
 
 export const videoRouter = express.Router();
 
@@ -46,6 +47,7 @@ const videoLimiter = rateLimit({
 videoRouter.post(
 	"/api/videos/metadados/client/:clientId/venue/:venueId",
 	videoLimiter,
+	allowOnlyBusinessWindow,
 	VideoController.createVideoMetadata
 );
 
@@ -137,6 +139,7 @@ videoRouter.get(
 videoRouter.get(
 	"/api/videos/sign",
 	videoLimiter,
+	allowOnlyBusinessWindow,
 	authenticateToken,
 	VideoController.signVideoUrl
 );
