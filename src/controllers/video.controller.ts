@@ -148,6 +148,12 @@ export class VideoController {
       //   return;
       // }
 
+      // Verifica se venueId é um UUID válido, se fornecido
+      if (venueId && !z.string().uuid().safeParse(venueId).success) {
+        res.status(400).json({ error: "Id da quadra inválido" });
+        return;
+      }
+
       logger.info("video.controller", `ListVideos venueId=${venueId ?? 'null'} limit=${limit} token=${token ?? 'null'} includeSignedUrl=${includeSignedUrl}`);
 
       const result = await videoService.listVideos({
